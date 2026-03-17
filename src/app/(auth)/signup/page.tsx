@@ -87,7 +87,7 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6 bg-[var(--bg-primary)] gradient-mesh">
+    <main className="min-h-screen flex items-start sm:items-center justify-center p-4 sm:p-6 bg-[var(--bg-primary)] gradient-mesh">
       {toast && (
         <AuthToast
           message={toast.message}
@@ -95,7 +95,7 @@ export default function SignupPage() {
           onDismiss={() => setToast(null)}
         />
       )}
-      <div className="w-full max-w-[400px] rounded-[var(--radius-xl)] glass p-8 shadow-2xl">
+      <div className="w-full max-w-[400px] rounded-[var(--radius-xl)] glass p-6 sm:p-8 shadow-2xl my-4 sm:my-0">
         <Link href="/" className="inline-block text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] mb-6">
           ← Back
         </Link>

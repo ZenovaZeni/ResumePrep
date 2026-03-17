@@ -18,7 +18,7 @@ export function BottomNav() {
 
   return (
     <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 glass border-t border-[var(--border-subtle)] safe-area-bottom"
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-40 glass border-t border-[var(--border-subtle)] safe-area-bottom"
       role="navigation"
       aria-label="Primary"
     >

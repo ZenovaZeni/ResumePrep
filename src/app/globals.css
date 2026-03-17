@@ -52,10 +52,23 @@
   --radius-full: 9999px;
 }
 
-@media (max-width: 768px) {
+/* Tablet */
+@media (max-width: 1023px) {
   :root {
     --text-hero: 2rem;
     --text-display: 2.5rem;
+  }
+}
+
+/* Fold 7 cover screen & compact phones (≤ 480px) */
+@media (max-width: 480px) {
+  :root {
+    --text-hero: 1.75rem;
+    --text-display: 2rem;
+    --text-h1: 1.625rem;
+    --text-h2: 1.25rem;
+    --space-section: 3.5rem;
+    --space-block: 1.75rem;
   }
 }
 

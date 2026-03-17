@@ -48,8 +48,8 @@ export function DashboardNav() {
           Smart Resume
         </Link>
 
-        {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-1">
+        {/* Desktop nav — lg+ only so Fold inner screen (~900px) gets the drawer */}
+        <nav className="hidden lg:flex items-center gap-1">
           {NAV_ITEMS.map(({ href, label }) => (
             <Link
               key={href}
@@ -73,11 +73,11 @@ export function DashboardNav() {
           </form>
         </nav>
 
-        {/* Mobile: hamburger */}
+        {/* Hamburger — shown below lg (covers phones, Fold inner, tablet) */}
         <button
           type="button"
           onClick={openDrawer}
-          className="md:hidden p-2 -mr-2 rounded-[var(--radius-sm)] text-[var(--text-primary)] hover:bg-[var(--bg-glass)] touch-manipulation"
+          className="lg:hidden p-2 -mr-2 rounded-[var(--radius-sm)] text-[var(--text-primary)] hover:bg-[var(--bg-glass)] touch-manipulation"
           aria-label="Open menu"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -86,10 +86,10 @@ export function DashboardNav() {
         </button>
       </div>
 
-      {/* Mobile drawer — portalled to body so the header's backdrop-filter doesn't trap fixed positioning */}
+      {/* Drawer — portalled to body so the header's backdrop-filter doesn't trap fixed positioning */}
       {mounted && createPortal(
         <div
-          className={`md:hidden fixed inset-0 z-[200] transition-opacity duration-200 ${
+          className={`lg:hidden fixed inset-0 z-[200] transition-opacity duration-200 ${
             drawerOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
           }`}
         >

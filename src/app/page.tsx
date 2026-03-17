@@ -1,30 +1,12 @@
 import Link from "next/link";
+import { MarketingNav } from "./MarketingNav";
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
       {/* Nav */}
-      <header className="fixed top-0 left-0 right-0 z-50 glass">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <span className="text-lg font-semibold tracking-tight">Smart Resume</span>
-          <nav className="flex items-center gap-6">
-            <a href="#how-it-works" className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
-              How it works
-            </a>
-            <a href="#features" className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
-              Features
-            </a>
-            <Link href="/login" className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
-              Log in
-            </Link>
-            <Link
-              href="/signup"
-              className="btn-primary"
-            >
-              Get started
-            </Link>
-          </nav>
-        </div>
+      <header className="fixed top-0 left-0 right-0 z-50 glass safe-area-top">
+        <MarketingNav />
       </header>
 
       {/* Hero */}
@@ -54,7 +36,7 @@ export default function HomePage() {
       </section>
 
       {/* Pain points */}
-      <section className="py-[var(--space-section)] px-6 bg-[var(--bg-secondary)]">
+      <section className="py-[var(--space-section)] px-4 sm:px-6 bg-[var(--bg-secondary)]">
         <div className="max-w-6xl mx-auto">
           <p className="text-sm font-medium text-[var(--accent)] tracking-wide uppercase mb-3">
             The problem
@@ -87,7 +69,7 @@ export default function HomePage() {
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" className="py-[var(--space-section)] px-6">
+      <section id="how-it-works" className="py-[var(--space-section)] px-4 sm:px-6">
         <div className="max-w-6xl mx-auto text-center">
           <p className="text-sm font-medium text-[var(--accent)] tracking-wide uppercase mb-3">
             How it works
@@ -116,7 +98,7 @@ export default function HomePage() {
       </section>
 
       {/* Features grid */}
-      <section id="features" className="py-[var(--space-section)] px-6 bg-[var(--bg-secondary)]">
+      <section id="features" className="py-[var(--space-section)] px-4 sm:px-6 bg-[var(--bg-secondary)]">
         <div className="max-w-6xl mx-auto">
           <p className="text-sm font-medium text-[var(--accent)] tracking-wide uppercase mb-3">
             Features
@@ -148,8 +130,8 @@ export default function HomePage() {
       </section>
 
       {/* CTA */}
-      <section className="py-[var(--space-section)] px-6">
-        <div className="max-w-3xl mx-auto text-center gradient-mesh rounded-[var(--radius-xl)] p-12 md:p-16 border border-[var(--border-subtle)]">
+      <section className="py-[var(--space-section)] px-4 sm:px-6">
+        <div className="max-w-3xl mx-auto text-center gradient-mesh rounded-[var(--radius-xl)] p-8 sm:p-12 lg:p-16 border border-[var(--border-subtle)]">
           <h2 className="text-[var(--text-h2)] md:text-[var(--text-h1)] font-semibold tracking-tight mb-4">
             Ready to get more interviews?
           </h2>
@@ -163,7 +145,7 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 px-6 border-t border-[var(--border-subtle)]">
+      <footer className="py-10 px-4 sm:px-6 border-t border-[var(--border-subtle)]">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <span className="text-sm text-[var(--text-tertiary)]">Smart Resume Platform</span>
           <div className="flex gap-6">
