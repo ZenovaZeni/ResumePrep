@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Smart Resume – Apply with AI",
+  "version": "0.1.0",
+  "description": "Generate tailored resumes and cover letters from job boards. Tracks applications in Smart Resume Platform.",
+  "permissions": ["storage", "activeTab"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Smart Resume"
+  },
+  "host_permissions": [
+    "https://*.supabase.co/*"
+  ]
+}
