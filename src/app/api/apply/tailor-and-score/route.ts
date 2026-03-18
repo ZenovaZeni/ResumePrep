@@ -89,6 +89,22 @@ export async function POST(request: Request) {
     const text = resumeToText(tailoredData);
     const { score, feedback } = await scoreResume(text, job_description);
 
+    // Persist ATS score + tailored resume snapshot on the application row.
+    // Non-blocking: silently swallowed if kit columns don't exist yet.
+    if (application_id) {
+      await supabase
+        .from("applications")
+        .update({
+          ats_score: score,
+          ats_feedback: { feedback },
+          tailored_resume: tailoredData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", application_id)
+        .eq("user_id", user.id)
+        .then(() => null);
+    }
+
     return NextResponse.json({
       variantId: variant.id,
       resume_data: variant.resume_data,

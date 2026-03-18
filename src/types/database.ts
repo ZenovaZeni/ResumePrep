@@ -31,6 +31,8 @@ export interface CareerProfilesRow {
   projects: Json | null;
   achievements: Json | null;
   metrics: Json | null;
+  phone: string | null;
+  location: string | null;
   updated_at: string;
 }
 
@@ -61,6 +63,39 @@ export type ApplicationStatus =
   | "rejected"
   | "offer";
 
+export type MatchSummary = {
+  matchScore: number;
+  topKeywords: string[];
+  matchedKeywords: string[];
+  missingKeywords: string[];
+  strengths: string[];
+  gaps: string[];
+  suggestedAngle: string;
+};
+
+export type InterviewPrep = {
+  questions: string[];
+  brief: string;
+  modelAnswers: string[];
+};
+
+export type CoverLetterModel = {
+  senderName: string;
+  senderEmail: string;
+  senderPhone?: string;
+  senderLocation?: string;
+  date: string;
+  recipientName: string;
+  companyName: string;
+  jobTitle: string;
+  greeting: string;
+  paragraphs: string[];
+  closing: string;
+  signature: string;
+  tone?: string;
+  lengthHint?: string;
+};
+
 export interface ApplicationsRow {
   id: string;
   user_id: string;
@@ -72,6 +107,12 @@ export interface ApplicationsRow {
   status: ApplicationStatus;
   notes: string | null;
   source: string;
+  match_summary: MatchSummary | null;
+  interview_prep: InterviewPrep | null;
+  tailored_resume: Json | null;
+  cover_letter: CoverLetterModel | null;
+  ats_score: number | null;
+  ats_feedback: Json | null;
   created_at: string;
   updated_at: string;
 }

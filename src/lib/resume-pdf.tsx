@@ -13,57 +13,69 @@ import { getDefaultDesign, type ResumeDesign } from "@/types/resume";
 const FONT_MAP = { sans: "Helvetica", serif: "Times-Roman" } as const;
 
 function createStyles(design: ResumeDesign) {
-  const font = FONT_MAP[design.fontFamily ?? "sans"];
-  const t = design.templateId ?? "clean";
-  const tight = t === "minimal" || t === "compact";
-  const spacious = t === "clean" || t === "professional" || t === "modern";
+  const font   = FONT_MAP[design.fontFamily ?? "sans"];
+  const boldFont = font === "Times-Roman" ? "Times-Bold" : "Helvetica-Bold";
+  const t      = design.templateId ?? "clean";
+  const isCompact      = t === "compact";
+  const isProfessional = t === "professional";
 
-  const base = {
+  // Professional: generous A4 margins, larger name, thick section title underline
+  // Compact: tight padding, smaller type
+  // Clean/others: balanced
+  const pagePadding   = isCompact ? 28 : isProfessional ? 48 : 36;
+  const bodySize      = isCompact ? 8.5 : 10;
+  const nameFontSize  = isCompact ? 14 : isProfessional ? 22 : 18;
+  const contactSize   = isCompact ? 7.5 : 9;
+  const sectionGap    = isCompact ? 6 : isProfessional ? 14 : 10;
+  const itemGap       = isCompact ? 3 : isProfessional ? 7 : 5;
+  const bulletMb      = isCompact ? 0.5 : 1.5;
+
+  return StyleSheet.create({
     page: {
-      padding: tight ? 36 : 48,
-      fontSize: tight ? 9 : 10,
+      padding: pagePadding,
+      fontSize: bodySize,
       fontFamily: font,
+      color: "#111827",
     },
     name: {
-      fontSize: tight ? 16 : 18,
-      marginBottom: 4,
-      fontFamily: font,
+      fontSize: nameFontSize,
+      fontFamily: boldFont,
+      marginBottom: isProfessional ? 4 : 2,
     },
     contact: {
-      fontSize: tight ? 8 : 9,
-      color: "#444",
-      marginBottom: spacious ? 16 : 12,
-      fontFamily: font,
+      fontSize: contactSize,
+      color: "#4b5563",
+      marginBottom: 2,
+    },
+    headerBorderBottom: {
+      borderBottomWidth: isProfessional ? 2 : 0,
+      borderBottomColor: "#111827",
+      paddingBottom: isProfessional ? 6 : 0,
+      marginBottom: sectionGap,
     },
     sectionTitle: {
-      fontSize: tight ? 10 : 11,
-      fontWeight: "bold",
-      marginTop: spacious ? 14 : 8,
-      marginBottom: tight ? 4 : 6,
-      borderBottomWidth: tight ? 0 : 1,
-      borderBottomColor: "#ccc",
-      paddingBottom: 2,
-      fontFamily: font,
+      fontSize: isCompact ? 7 : 8,
+      fontFamily: boldFont,
+      textTransform: "uppercase",
+      letterSpacing: 1.2,
+      color: isProfessional ? "#111827" : "#6b7280",
+      borderBottomWidth: isProfessional ? 1.5 : 0,
+      borderBottomColor: "#111827",
+      paddingBottom: isProfessional ? 2 : 0,
+      marginBottom: isCompact ? 2 : 4,
+      marginTop: sectionGap,
     },
-    summary: { marginBottom: tight ? 6 : 8, lineHeight: 1.4, fontFamily: font },
-    jobTitle: { fontWeight: "bold", marginBottom: 2, fontFamily: font },
-    jobMeta: {
-      fontSize: tight ? 8 : 9,
-      color: "#555",
-      marginBottom: 4,
-      fontFamily: font,
-    },
+    itemBlock: { marginBottom: itemGap },
+    roleRow: { flexDirection: "row", justifyContent: "space-between" },
+    roleText: { fontFamily: boldFont, fontSize: bodySize },
+    metaText: { fontSize: isCompact ? 7.5 : 9, color: "#6b7280" },
     bullet: {
-      marginLeft: 12,
-      marginBottom: tight ? 1 : 2,
+      marginLeft: 10,
+      marginBottom: bulletMb,
       lineHeight: 1.35,
-      fontFamily: font,
     },
-    educationItem: { marginBottom: tight ? 4 : 6, fontFamily: font },
-    skills: { lineHeight: 1.5, fontFamily: font },
-  };
-
-  return StyleSheet.create(base);
+    plainText: { lineHeight: 1.5 },
+  });
 }
 
 function ResumePageContent({
@@ -75,72 +87,97 @@ function ResumePageContent({
 }) {
   return (
     <>
-      <View>
+      {/* Header */}
+      <View style={styles.headerBorderBottom}>
         <Text style={styles.name}>{data.contact?.name || "Your Name"}</Text>
         <Text style={styles.contact}>
-          {[data.contact?.email, data.contact?.phone, data.contact?.location]
+          {[data.contact?.email, data.contact?.phone, data.contact?.location, data.contact?.linkedin, data.contact?.website]
             .filter(Boolean)
-            .join(" · ")}
+            .join("  ·  ")}
         </Text>
       </View>
 
+      {/* Summary */}
       {data.summary && (
         <View>
           <Text style={styles.sectionTitle}>Summary</Text>
-          <Text style={styles.summary}>{data.summary}</Text>
+          <Text style={styles.plainText}>{data.summary}</Text>
         </View>
       )}
 
+      {/* Experience */}
       {(data.experience ?? []).length > 0 && (
         <View>
           <Text style={styles.sectionTitle}>Experience</Text>
           {data.experience!.map((exp, i) => (
-            <View key={i} style={{ marginBottom: 8 }}>
-              <Text style={styles.jobTitle}>
-                {exp.role} at {exp.company}
-              </Text>
-              <Text style={styles.jobMeta}>
-                {exp.start} – {exp.end}
-                {exp.location ? ` · ${exp.location}` : ""}
-              </Text>
+            <View key={i} style={styles.itemBlock}>
+              <View style={styles.roleRow}>
+                <Text style={styles.roleText}>{exp.role} — {exp.company}</Text>
+                <Text style={styles.metaText}>{exp.start} – {exp.end}</Text>
+              </View>
               {exp.bullets?.map((b, j) => (
-                <Text key={j} style={styles.bullet}>
-                  • {b}
-                </Text>
+                <Text key={j} style={styles.bullet}>• {b}</Text>
               ))}
             </View>
           ))}
         </View>
       )}
 
+      {/* Education */}
       {(data.education ?? []).length > 0 && (
         <View>
           <Text style={styles.sectionTitle}>Education</Text>
           {data.education!.map((edu, i) => (
-            <View key={i} style={styles.educationItem}>
-              <Text style={styles.jobTitle}>
-                {edu.degree}
-                {edu.field ? ` in ${edu.field}` : ""}
-              </Text>
-              <Text style={styles.jobMeta}>
-                {edu.school} · {edu.start} – {edu.end}
-              </Text>
+            <View key={i} style={styles.itemBlock}>
+              <View style={styles.roleRow}>
+                <Text style={styles.roleText}>{edu.degree}{edu.field ? ` in ${edu.field}` : ""}</Text>
+                <Text style={styles.metaText}>{edu.start} – {edu.end}</Text>
+              </View>
+              <Text style={styles.metaText}>{edu.school}</Text>
             </View>
           ))}
         </View>
       )}
 
+      {/* Skills */}
       {(data.skills ?? []).length > 0 && (
         <View>
           <Text style={styles.sectionTitle}>Skills</Text>
-          <Text style={styles.skills}>{data.skills!.join(", ")}</Text>
+          <Text style={styles.plainText}>{data.skills!.join(", ")}</Text>
         </View>
       )}
 
+      {/* Certifications */}
       {(data.certifications ?? []).length > 0 && (
         <View>
           <Text style={styles.sectionTitle}>Certifications</Text>
-          <Text style={styles.skills}>{data.certifications!.join(", ")}</Text>
+          <Text style={styles.plainText}>{(data.certifications as string[]).join(", ")}</Text>
+        </View>
+      )}
+
+      {/* Projects */}
+      {(data.projects ?? []).length > 0 && (
+        <View>
+          <Text style={styles.sectionTitle}>Projects</Text>
+          {(data.projects ?? []).map((proj, i) => (
+            <View key={i} style={styles.itemBlock}>
+              <Text style={styles.roleText}>{proj.name}</Text>
+              {proj.description ? <Text style={styles.plainText}>{proj.description}</Text> : null}
+              {(proj.bullets ?? []).map((b, j) => (
+                <Text key={j} style={styles.bullet}>• {b}</Text>
+              ))}
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Achievements */}
+      {(data.achievements ?? []).length > 0 && (
+        <View>
+          <Text style={styles.sectionTitle}>Achievements</Text>
+          {(data.achievements as string[]).map((a, i) => (
+            <Text key={i} style={styles.bullet}>• {a}</Text>
+          ))}
         </View>
       )}
     </>

@@ -13,6 +13,7 @@ import {
 } from "@/types/resume";
 import type { ResumeDesignTemplateId } from "@/types/resume";
 import { PublicResumeContent } from "@/app/r/[slug]/PublicResumeContent";
+import { TagInput } from "@/components/TagInput";
 
 interface ResumeEditorProps {
   resumeId: string;
@@ -147,395 +148,277 @@ export function ResumeEditor({ resumeId, initialData, initialSlug, tier = "free"
     setSuggestedBullets((prev) => prev.filter((b) => b !== bullet));
   }
 
+  const inputCls = "w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]";
+  const sectionCls = "rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4";
+  const sectionHeading = "text-sm font-medium text-[var(--text-secondary)] mb-3";
+
   return (
-    <div className="flex flex-col lg:flex-row gap-8">
-      <div className="flex-1 space-y-6">
-        {/* ATS check */}
-        <section className="rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4">
-          <h2 className="text-sm font-medium text-[var(--text-primary)] mb-2">ATS score</h2>
-          <p className="text-xs text-[var(--text-tertiary)] mb-3">See how your resume scores. Optionally paste a job description for role-specific feedback.</p>
-          <textarea
-            placeholder="Paste job description (optional)"
-            value={atsJobDescription}
-            onChange={(e) => setAtsJobDescription(e.target.value)}
-            rows={2}
-            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] mb-2"
-          />
-          <button
-            type="button"
-            onClick={runAtsCheck}
-            disabled={atsLoading}
-            className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm font-medium hover:bg-[var(--bg-glass)] disabled:opacity-50"
-          >
-            {atsLoading ? "Checking…" : "Run ATS check"}
-          </button>
-          {atsResult && (
-            <div className="mt-4 p-4 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-subtle)]">
-              <p className="font-medium text-[var(--text-primary)]">Score: {atsResult.score}/100</p>
-              {atsResult.feedback.length > 0 && (
-                <ul className="mt-2 text-sm text-[var(--text-secondary)] list-disc list-inside space-y-1">
-                  {atsResult.feedback.map((f, i) => (
-                    <li key={i}>{f}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </section>
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,480px)_280px] items-start">
+      {/* ── LEFT: Editor ─────────────────────────────────────────────── */}
+      <div className="space-y-4 min-w-0">
 
         {/* Contact */}
-        <section className="rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4">
-          <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Contact</h2>
+        <section className={sectionCls}>
+          <h2 className={sectionHeading}>Contact</h2>
           <div className="grid gap-2 sm:grid-cols-2">
-            <input
-              placeholder="Name"
-              value={data.contact?.name ?? ""}
-              onChange={(e) =>
-                setData((d) => ({
-                  ...d,
-                  contact: { ...d.contact, name: e.target.value },
-                }))
-              }
-              className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            />
-            <input
-              placeholder="Email"
-              value={data.contact?.email ?? ""}
-              onChange={(e) =>
-                setData((d) => ({
-                  ...d,
-                  contact: { ...d.contact, email: e.target.value },
-                }))
-              }
-              className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            />
-            <input
-              placeholder="Phone"
-              value={data.contact?.phone ?? ""}
-              onChange={(e) =>
-                setData((d) => ({
-                  ...d,
-                  contact: { ...d.contact, phone: e.target.value },
-                }))
-              }
-              className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            />
-            <input
-              placeholder="Location"
-              value={data.contact?.location ?? ""}
-              onChange={(e) =>
-                setData((d) => ({
-                  ...d,
-                  contact: { ...d.contact, location: e.target.value },
-                }))
-              }
-              className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            />
+            {(["name","email","phone","location","linkedin","website"] as const).map((field) => (
+              <input
+                key={field}
+                placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
+                value={(data.contact as Record<string,string> | undefined)?.[field] ?? ""}
+                onChange={(e) => setData((d) => ({ ...d, contact: { ...d.contact, [field]: e.target.value } }))}
+                className={inputCls}
+              />
+            ))}
           </div>
         </section>
 
         {/* Summary */}
-        <section className="rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4">
-          <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Summary</h2>
-          <textarea
-            rows={3}
-            value={data.summary ?? ""}
-            onChange={(e) => setData((d) => ({ ...d, summary: e.target.value }))}
-            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-          />
+        <section className={sectionCls}>
+          <h2 className={sectionHeading}>Summary</h2>
+          <textarea rows={3} value={data.summary ?? ""} onChange={(e) => setData((d) => ({ ...d, summary: e.target.value }))} className={inputCls} />
         </section>
 
         {/* Experience */}
-        {(data.experience ?? []).map((exp, expIndex) => (
-          <section key={expIndex} className="rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <h2 className="text-sm font-medium text-[var(--text-secondary)]">Experience #{expIndex + 1}</h2>
-              <button
-                type="button"
-                onClick={() => fetchSuggestedBullets(expIndex)}
-                disabled={suggestLoading}
-                className="text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] disabled:opacity-50"
-              >
-                {suggestLoading ? "…" : "+ Suggest bullets (AI)"}
-              </button>
-            </div>
-            {suggestingExpIndex === expIndex && suggestedBullets.length > 0 && (
-              <div className="mb-3 p-3 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-subtle)]">
-                <p className="text-xs text-[var(--text-tertiary)] mb-2">Click to add a bullet:</p>
-                <ul className="space-y-1">
-                  {suggestedBullets.map((b, i) => (
-                    <li key={i}>
-                      <button
-                        type="button"
-                        onClick={() => addSuggestedBullet(b)}
-                        className="text-left text-sm text-[var(--accent)] hover:text-[var(--accent-hover)] hover:underline w-full"
-                      >
-                        + {b.slice(0, 80)}{b.length > 80 ? "…" : ""}
-                      </button>
-                    </li>
+        <section className={sectionCls}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className={sectionHeading.replace(" mb-3","")}>Experience</h2>
+            <button
+              type="button"
+              onClick={() => setData((d) => ({ ...d, experience: [...(d.experience ?? []), { company: "", role: "", start: "", end: "", bullets: [""] }] }))}
+              className="text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)]"
+            >+ Add</button>
+          </div>
+          <div className="space-y-5">
+            {(data.experience ?? []).map((exp, expIndex) => (
+              <div key={expIndex} className="border border-[var(--border-subtle)] rounded-lg p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-[var(--text-tertiary)]">#{expIndex + 1}</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => fetchSuggestedBullets(expIndex)}
+                      disabled={suggestLoading}
+                      className="text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] disabled:opacity-50"
+                    >{suggestLoading && suggestingExpIndex === expIndex ? "…" : "AI bullets"}</button>
+                    <button
+                      type="button"
+                      onClick={() => setData((d) => ({ ...d, experience: (d.experience ?? []).filter((_, i) => i !== expIndex) }))}
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >Delete</button>
+                  </div>
+                </div>
+                {suggestingExpIndex === expIndex && suggestedBullets.length > 0 && (
+                  <div className="p-3 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-subtle)]">
+                    <p className="text-xs text-[var(--text-tertiary)] mb-2">Click to add:</p>
+                    <ul className="space-y-1">
+                      {suggestedBullets.map((b, i) => (
+                        <li key={i}>
+                          <button type="button" onClick={() => addSuggestedBullet(b)} className="text-left text-sm text-[var(--accent)] hover:underline w-full">
+                            + {b.slice(0, 80)}{b.length > 80 ? "…" : ""}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <button type="button" onClick={() => { setSuggestingExpIndex(null); setSuggestedBullets([]); }} className="mt-2 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">Close</button>
+                  </div>
+                )}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(["company","role","start","end"] as const).map((f) => (
+                    <input key={f} placeholder={f.charAt(0).toUpperCase()+f.slice(1)} value={exp[f] ?? ""} onChange={(e) => { const n=[...(data.experience??[])]; n[expIndex]={...n[expIndex]!,[f]:e.target.value}; setData((d)=>({...d,experience:n})); }} className={inputCls} />
                   ))}
-                </ul>
-                <button
-                  type="button"
-                  onClick={() => { setSuggestingExpIndex(null); setSuggestedBullets([]); }}
-                  className="mt-2 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-                >
-                  Close
-                </button>
+                </div>
+                <div className="space-y-2">
+                  {(exp.bullets ?? []).map((bullet, bIdx) => (
+                    <div key={bIdx} className="flex gap-2 items-start">
+                      <textarea rows={2} value={bullet} onChange={(e) => { const n=[...(data.experience??[])]; const nb=[...(n[expIndex]?.bullets??[])]; nb[bIdx]=e.target.value; n[expIndex]={...n[expIndex]!,bullets:nb}; setData((d)=>({...d,experience:n})); }} className={`flex-1 ${inputCls}`} />
+                      <div className="flex flex-col gap-1">
+                        <button type="button" onClick={() => improveBullet(expIndex, bIdx)} disabled={improvingIndex?.exp===expIndex&&improvingIndex?.bullet===bIdx} className="text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] disabled:opacity-50">{improvingIndex?.exp===expIndex&&improvingIndex?.bullet===bIdx?"…":"AI"}</button>
+                        <button type="button" onClick={() => { const n=[...(data.experience??[])]; const nb=(n[expIndex]?.bullets??[]).filter((_,i)=>i!==bIdx); n[expIndex]={...n[expIndex]!,bullets:nb}; setData((d)=>({...d,experience:n})); }} className="text-xs text-red-400 hover:text-red-300">×</button>
+                      </div>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => { const n=[...(data.experience??[])]; const nb=[...(n[expIndex]?.bullets??[]),""];  n[expIndex]={...n[expIndex]!,bullets:nb}; setData((d)=>({...d,experience:n})); }} className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)]">+ Add bullet</button>
+                </div>
               </div>
-            )}
-            <div className="grid gap-2 sm:grid-cols-2 mb-3">
-              <input
-                placeholder="Company"
-                value={exp.company}
-                onChange={(e) => {
-                  const next = [...(data.experience ?? [])];
-                  next[expIndex] = { ...next[expIndex]!, company: e.target.value };
-                  setData((d) => ({ ...d, experience: next }));
-                }}
-                className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              />
-              <input
-                placeholder="Role"
-                value={exp.role}
-                onChange={(e) => {
-                  const next = [...(data.experience ?? [])];
-                  next[expIndex] = { ...next[expIndex]!, role: e.target.value };
-                  setData((d) => ({ ...d, experience: next }));
-                }}
-                className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              />
-              <input
-                placeholder="Start"
-                value={exp.start}
-                onChange={(e) => {
-                  const next = [...(data.experience ?? [])];
-                  next[expIndex] = { ...next[expIndex]!, start: e.target.value };
-                  setData((d) => ({ ...d, experience: next }));
-                }}
-                className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              />
-              <input
-                placeholder="End"
-                value={exp.end}
-                onChange={(e) => {
-                  const next = [...(data.experience ?? [])];
-                  next[expIndex] = { ...next[expIndex]!, end: e.target.value };
-                  setData((d) => ({ ...d, experience: next }));
-                }}
-                className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              />
-            </div>
-            <ul className="space-y-2">
-              {(exp.bullets ?? []).map((bullet, bulletIndex) => (
-                <li key={bulletIndex} className="flex gap-2 items-start">
-                  <textarea
-                    rows={2}
-                    value={bullet}
-                    onChange={(e) => {
-                      const next = [...(data.experience ?? [])];
-                      const nextBullets = [...(next[expIndex]?.bullets ?? [])];
-                      nextBullets[bulletIndex] = e.target.value;
-                      next[expIndex] = { ...next[expIndex]!, bullets: nextBullets };
-                      setData((d) => ({ ...d, experience: next }));
-                    }}
-                    className="flex-1 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => improveBullet(expIndex, bulletIndex)}
-                    disabled={improvingIndex?.exp === expIndex && improvingIndex?.bullet === bulletIndex}
-                    className="shrink-0 text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] disabled:opacity-50"
-                  >
-                    {improvingIndex?.exp === expIndex && improvingIndex?.bullet === bulletIndex
-                      ? "…"
-                      : "Improve"}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-
-        {/* Skills */}
-        <section className="rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4">
-          <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Skills</h2>
-          <input
-            value={data.skills?.join(", ") ?? ""}
-            onChange={(e) =>
-              setData((d) => ({
-                ...d,
-                skills: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-              }))
-            }
-            placeholder="Comma-separated"
-            className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-          />
+            ))}
+          </div>
         </section>
 
-        {/* Design: template, font, public theme */}
-        <section className="rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4">
-          <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Resume design</h2>
+        {/* Education */}
+        <section className={sectionCls}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className={sectionHeading.replace(" mb-3","")}>Education</h2>
+            <button type="button" onClick={() => setData((d) => ({ ...d, education: [...(d.education ?? []), { school: "", degree: "", field: "", start: "", end: "" }] }))} className="text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)]">+ Add</button>
+          </div>
+          <div className="space-y-4">
+            {(data.education ?? []).map((edu, i) => (
+              <div key={i} className="border border-[var(--border-subtle)] rounded-lg p-3 space-y-2">
+                <div className="flex justify-end">
+                  <button type="button" onClick={() => setData((d) => ({ ...d, education: (d.education ?? []).filter((_, j) => j !== i) }))} className="text-xs text-red-400 hover:text-red-300">Delete</button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <input placeholder="School" value={edu.school ?? ""} onChange={(e) => { const n=[...(data.education??[])]; n[i]={...n[i]!,school:e.target.value}; setData((d)=>({...d,education:n})); }} className={inputCls} />
+                  <input placeholder="Degree" value={edu.degree ?? ""} onChange={(e) => { const n=[...(data.education??[])]; n[i]={...n[i]!,degree:e.target.value}; setData((d)=>({...d,education:n})); }} className={inputCls} />
+                  <input placeholder="Field of study" value={edu.field ?? ""} onChange={(e) => { const n=[...(data.education??[])]; n[i]={...n[i]!,field:e.target.value}; setData((d)=>({...d,education:n})); }} className={inputCls} />
+                  <input placeholder="Start" value={edu.start ?? ""} onChange={(e) => { const n=[...(data.education??[])]; n[i]={...n[i]!,start:e.target.value}; setData((d)=>({...d,education:n})); }} className={inputCls} />
+                  <input placeholder="End" value={edu.end ?? ""} onChange={(e) => { const n=[...(data.education??[])]; n[i]={...n[i]!,end:e.target.value}; setData((d)=>({...d,education:n})); }} className={inputCls} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Skills */}
+        <section className={sectionCls}>
+          <h2 className={sectionHeading}>Skills</h2>
+          <TagInput tags={data.skills ?? []} onChange={(tags) => setData((d) => ({ ...d, skills: tags }))} placeholder="Type a skill, press Enter or comma to add…" />
+          <p className="text-xs text-[var(--text-tertiary)] mt-1.5">Press Enter or comma to add. Click × to remove.</p>
+        </section>
+
+        {/* Certifications */}
+        <section className={sectionCls}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className={sectionHeading.replace(" mb-3","")}>Certifications</h2>
+            <button type="button" onClick={() => setData((d) => ({ ...d, certifications: [...(d.certifications ?? []), ""] }))} className="text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)]">+ Add</button>
+          </div>
+          <div className="space-y-2">
+            {(data.certifications ?? []).map((cert, i) => (
+              <div key={i} className="flex gap-2">
+                <input value={typeof cert === "string" ? cert : ""} onChange={(e) => { const n=[...(data.certifications??[])]; n[i]=e.target.value; setData((d)=>({...d,certifications:n})); }} className={`flex-1 ${inputCls}`} placeholder="Certification name" />
+                <button type="button" onClick={() => setData((d) => ({ ...d, certifications: (d.certifications ?? []).filter((_, j) => j !== i) }))} className="text-xs text-red-400 hover:text-red-300 shrink-0">×</button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Projects */}
+        <section className={sectionCls}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className={sectionHeading.replace(" mb-3","")}>Projects</h2>
+            <button type="button" onClick={() => setData((d) => ({ ...d, projects: [...(d.projects ?? []), { name: "", description: "", url: "", bullets: [] }] }))} className="text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)]">+ Add</button>
+          </div>
+          <div className="space-y-4">
+            {(data.projects ?? []).map((proj, i) => (
+              <div key={i} className="border border-[var(--border-subtle)] rounded-lg p-3 space-y-2">
+                <div className="flex justify-end">
+                  <button type="button" onClick={() => setData((d) => ({ ...d, projects: (d.projects ?? []).filter((_, j) => j !== i) }))} className="text-xs text-red-400 hover:text-red-300">Delete</button>
+                </div>
+                <input placeholder="Project name" value={proj.name ?? ""} onChange={(e) => { const n=[...(data.projects??[])]; n[i]={...n[i]!,name:e.target.value}; setData((d)=>({...d,projects:n})); }} className={inputCls} />
+                <input placeholder="URL (optional)" value={proj.url ?? ""} onChange={(e) => { const n=[...(data.projects??[])]; n[i]={...n[i]!,url:e.target.value}; setData((d)=>({...d,projects:n})); }} className={inputCls} />
+                <textarea rows={2} placeholder="Description" value={proj.description ?? ""} onChange={(e) => { const n=[...(data.projects??[])]; n[i]={...n[i]!,description:e.target.value}; setData((d)=>({...d,projects:n})); }} className={inputCls} />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Achievements */}
+        <section className={sectionCls}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className={sectionHeading.replace(" mb-3","")}>Achievements</h2>
+            <button type="button" onClick={() => setData((d) => ({ ...d, achievements: [...(d.achievements ?? []), ""] }))} className="text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)]">+ Add</button>
+          </div>
+          <div className="space-y-2">
+            {(data.achievements ?? []).map((ach, i) => (
+              <div key={i} className="flex gap-2">
+                <input value={typeof ach === "string" ? ach : ""} onChange={(e) => { const n=[...(data.achievements??[])]; n[i]=e.target.value; setData((d)=>({...d,achievements:n})); }} className={`flex-1 ${inputCls}`} placeholder="Achievement" />
+                <button type="button" onClick={() => setData((d) => ({ ...d, achievements: (d.achievements ?? []).filter((_, j) => j !== i) }))} className="text-xs text-red-400 hover:text-red-300 shrink-0">×</button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Design */}
+        <section className={sectionCls}>
+          <h2 className={sectionHeading}>Resume design</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-xs text-[var(--text-tertiary)] mb-1">Layout</label>
-              <select
-                value={getDefaultDesign(data.design).templateId}
-                onChange={(e) =>
-                  setData((d) => ({
-                    ...d,
-                    design: {
-                      ...getDefaultDesign(d.design),
-                      templateId: e.target.value as ResumeDesignTemplateId,
-                    },
-                  }))
-                }
-                className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              >
-                {RESUME_VIEW_TEMPLATES.map((t) => {
-                  const locked = !canUseResumeTemplate(t.id, tier, isTestAccount);
-                  return (
-                    <option key={t.id} value={t.id} disabled={locked}>
-                      {t.label}{t.recommended ? " ★" : ""}{locked ? " (Pro)" : t.free ? "" : " (Pro)"}
-                    </option>
-                  );
-                })}
+              <select value={getDefaultDesign(data.design).templateId} onChange={(e) => setData((d) => ({ ...d, design: { ...getDefaultDesign(d.design), templateId: e.target.value as ResumeDesignTemplateId } }))} className={inputCls}>
+                {RESUME_VIEW_TEMPLATES.map((t) => { const locked=!canUseResumeTemplate(t.id,tier,isTestAccount); return <option key={t.id} value={t.id} disabled={locked}>{t.label}{t.recommended?" ★":""}{locked?" (Pro)":t.free?"":" (Pro)"}</option>; })}
               </select>
             </div>
             <div>
               <label className="block text-xs text-[var(--text-tertiary)] mb-1">Font</label>
-              <select
-                value={getDefaultDesign(data.design).fontFamily}
-                onChange={(e) =>
-                  setData((d) => ({
-                    ...d,
-                    design: {
-                      ...getDefaultDesign(d.design),
-                      fontFamily: e.target.value as "sans" | "serif",
-                    },
-                  }))
-                }
-                className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              >
-                {DESIGN_FONTS.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.label}
-                  </option>
-                ))}
+              <select value={getDefaultDesign(data.design).fontFamily} onChange={(e) => setData((d) => ({ ...d, design: { ...getDefaultDesign(d.design), fontFamily: e.target.value as "sans"|"serif" } }))} className={inputCls}>
+                {DESIGN_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
               </select>
             </div>
             <div className="sm:col-span-2">
               <label className="block text-xs text-[var(--text-tertiary)] mb-1">Public page theme</label>
-              <select
-                value={getDefaultDesign(data.design).publicTheme}
-                onChange={(e) =>
-                  setData((d) => ({
-                    ...d,
-                    design: {
-                      ...getDefaultDesign(d.design),
-                      publicTheme: e.target.value as ResumeDesignTemplateId,
-                    },
-                  }))
-                }
-                className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              >
-                {PUBLIC_THEMES.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
+              <select value={getDefaultDesign(data.design).publicTheme} onChange={(e) => setData((d) => ({ ...d, design: { ...getDefaultDesign(d.design), publicTheme: e.target.value as ResumeDesignTemplateId } }))} className={inputCls}>
+                {PUBLIC_THEMES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
               <p className="text-[var(--text-tertiary)] text-xs mt-1">Used for your shareable /r/[slug] page.</p>
             </div>
           </div>
         </section>
 
-        <div className="rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4 mb-6">
-          <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-2">Share link</h2>
+        {/* Share link */}
+        <section className={`${sectionCls} mb-2`}>
+          <h2 className={sectionHeading}>Share link</h2>
           <div className="flex gap-2 flex-wrap items-center">
-            <input
-              placeholder="my-resume-slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm w-48 placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            />
-            <button
-              type="button"
-              onClick={async () => {
-                setSlugSaving(true);
-                const res = await fetch(`/api/resumes/${resumeId}/slug`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ slug: slug || null }),
-                });
-                setSlugSaving(false);
-                if (res.ok) {
-                  const d = await res.json();
-                  setSlug(d.slug ?? "");
-                }
-              }}
-              disabled={slugSaving}
-              className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm font-medium hover:bg-[var(--bg-glass)] disabled:opacity-50"
-            >
-              {slugSaving ? "Saving…" : "Save slug"}
-            </button>
-            {slug && (
-              <button
-                type="button"
-                onClick={() => {
-                  const url = `${typeof window !== "undefined" ? window.location.origin : ""}/r/${slug}`;
-                  navigator.clipboard.writeText(url);
-                }}
-                className="text-sm font-medium text-[var(--accent)] hover:text-[var(--accent-hover)]"
-              >
-                Copy link
-              </button>
-            )}
+            <input placeholder="my-resume-slug" value={slug} onChange={(e) => setSlug(e.target.value)} className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm w-48 placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
+            <button type="button" onClick={async () => { setSlugSaving(true); const res=await fetch(`/api/resumes/${resumeId}/slug`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({slug:slug||null})}); setSlugSaving(false); if(res.ok){const d=await res.json();setSlug(d.slug??"");} }} disabled={slugSaving} className="px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm font-medium hover:bg-[var(--bg-glass)] disabled:opacity-50">{slugSaving?"Saving…":"Save slug"}</button>
+            {slug && <button type="button" onClick={() => navigator.clipboard.writeText(`${typeof window!=="undefined"?window.location.origin:""}/r/${slug}`)} className="text-sm font-medium text-[var(--accent)] hover:text-[var(--accent-hover)]">Copy link</button>}
           </div>
-          {slug && (
-            <p className="text-[var(--text-tertiary)] text-xs mt-2">
-              Public link: /r/{slug}
-            </p>
-          )}
-        </div>
+          {slug && <p className="text-[var(--text-tertiary)] text-xs mt-2">Public link: /r/{slug}</p>}
+        </section>
 
         <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            className="btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-          <Link
-            href={`/dashboard/resumes/${resumeId}/export`}
-            className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm font-medium hover:bg-[var(--bg-glass)]"
-          >
-            Export PDF
-          </Link>
-          <Link
-            href={`/dashboard/resumes/${resumeId}/versions`}
-            className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-default)] text-[var(--text-secondary)] text-sm hover:bg-[var(--bg-tertiary)]"
-          >
-            Versions
-          </Link>
-          {saveError && (
-            <span className="text-xs text-red-400 self-center">{saveError}</span>
-          )}
-          <Link
-            href="/dashboard/resumes"
-            className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-default)] text-[var(--text-secondary)] text-sm hover:bg-[var(--bg-tertiary)]"
-          >
-            Back to list
-          </Link>
+          <button type="button" onClick={save} disabled={saving} className="btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50">{saving?"Saving…":"Save"}</button>
+          <Link href={`/dashboard/resumes/${resumeId}/export`} className="px-4 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm font-medium hover:bg-[var(--bg-glass)]">Export PDF</Link>
+          <Link href={`/dashboard/resumes/${resumeId}/versions`} className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-default)] text-[var(--text-secondary)] text-sm hover:bg-[var(--bg-tertiary)]">Versions</Link>
+          {saveError && <span className="text-xs text-red-400 self-center">{saveError}</span>}
+          <Link href="/dashboard/resumes" className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-default)] text-[var(--text-secondary)] text-sm hover:bg-[var(--bg-tertiary)]">← Back</Link>
         </div>
       </div>
 
-      {/* Preview */}
-      <div className="lg:w-[400px] shrink-0">
-        <div className={`sticky top-24 rounded-xl bg-white text-black p-6 shadow-lg max-h-[80vh] overflow-auto text-sm ${getDefaultDesign(data.design).fontFamily === "serif" ? "font-serif" : "font-sans"}`}>
+      {/* ── CENTER: Live preview ───────────────────────────────────────── */}
+      <div className="min-w-0">
+        <div className={`sticky top-24 rounded-xl bg-white text-black p-6 shadow-lg max-h-[88vh] overflow-y-auto text-sm ${getDefaultDesign(data.design).fontFamily==="serif"?"font-serif":"font-sans"}`}>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-3">Live preview</p>
           <PublicResumeContent data={data} theme={getDefaultDesign(data.design).templateId} />
+        </div>
+      </div>
+
+      {/* ── RIGHT: ATS / Insights ─────────────────────────────────────── */}
+      <div className="min-w-0">
+        <div className="sticky top-24 space-y-4">
+          <section className={sectionCls}>
+            <h2 className="text-sm font-medium text-[var(--text-primary)] mb-2">ATS score</h2>
+            <p className="text-xs text-[var(--text-tertiary)] mb-3">Optionally paste a job description for role-specific feedback.</p>
+            <textarea
+              placeholder="Paste job description (optional)"
+              value={atsJobDescription}
+              onChange={(e) => setAtsJobDescription(e.target.value)}
+              rows={4}
+              className={`${inputCls} mb-2 resize-none`}
+            />
+            <button type="button" onClick={runAtsCheck} disabled={atsLoading} className="w-full px-3 py-2 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm font-medium hover:bg-[var(--bg-glass)] disabled:opacity-50">
+              {atsLoading ? "Checking…" : "Run ATS check"}
+            </button>
+            {atsResult && (
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">Score</p>
+                  <span className={`text-xl font-bold ${atsResult.score >= 75 ? "text-emerald-400" : atsResult.score >= 50 ? "text-amber-400" : "text-red-400"}`}>{atsResult.score}<span className="text-sm font-normal text-[var(--text-tertiary)]">/100</span></span>
+                </div>
+                <div className="h-2 rounded-full bg-[var(--bg-tertiary)] overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${atsResult.score>=75?"bg-emerald-500":atsResult.score>=50?"bg-amber-500":"bg-red-500"}`} style={{width:`${atsResult.score}%`}} />
+                </div>
+                {atsResult.feedback.length > 0 && (
+                  <ul className="space-y-1.5">
+                    {atsResult.feedback.map((f, idx) => (
+                      <li key={idx} className="text-xs text-[var(--text-secondary)] flex gap-2">
+                        <span className="shrink-0 mt-0.5 text-[var(--accent)]">•</span>{f}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </div>

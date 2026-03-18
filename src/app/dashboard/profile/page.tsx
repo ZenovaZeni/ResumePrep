@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ProfileForm } from "./ProfileForm";
+import { computeProfileCompletion } from "@/lib/profile-completion";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -28,19 +29,20 @@ export default async function ProfilePage() {
       : null;
   const loadError = realProfileErr ?? realCareerErr ?? null;
 
-  // Compute profile completion score for sidebar
-  const exp = career?.raw_experience as unknown;
-  const hasExperience = Array.isArray(exp) && (exp as unknown[]).length > 0;
-  const completionItems = [
-    { label: "Name", done: Boolean(profile?.first_name?.trim()) },
-    { label: "Summary", done: Boolean(career?.summary?.trim()) },
-    { label: "Experience", done: hasExperience },
-    { label: "Skills", done: Array.isArray(career?.skills) && (career?.skills as string[]).length > 0 },
-    { label: "Education", done: Array.isArray(career?.education) && (career?.education as unknown[]).length > 0 },
-  ];
-  const completionScore = Math.round(
-    (completionItems.filter((i) => i.done).length / completionItems.length) * 100
-  );
+  // Compute profile completion score for sidebar (shared logic with ProfileForm)
+  const { score: completionScore, items: completionItems } = computeProfileCompletion({
+    firstName: profile?.first_name,
+    email: user.email,
+    location: career?.location,
+    headline: career?.headline,
+    summary: career?.summary,
+    targetRoles: career?.target_roles,
+    experience: Array.isArray(career?.raw_experience) ? (career.raw_experience as unknown[]) : null,
+    education: Array.isArray(career?.education) ? (career.education as unknown[]) : null,
+    skills: career?.skills,
+    linkedin: undefined,
+    website: undefined,
+  });
 
   return (
     <div className="max-w-6xl mx-auto">

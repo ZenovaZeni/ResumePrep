@@ -2,18 +2,34 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ResumeData } from "@/types/resume";
 
-type Template = { id: string; label: string };
+const LAYOUT_TEMPLATES = [
+  {
+    id: "clean",
+    label: "Clean",
+    description: "Modern minimal — generous white space, clean hierarchy, single column",
+  },
+  {
+    id: "professional",
+    label: "Professional",
+    description: "Traditional — clear section separators, classic typographic hierarchy",
+  },
+  {
+    id: "compact",
+    label: "Compact",
+    description: "Dense — maximises content per page, tighter spacing, smaller type scale",
+  },
+] as const;
+
+type LayoutTemplateId = (typeof LAYOUT_TEMPLATES)[number]["id"];
 
 interface ResumeNewFormProps {
   profile: Record<string, unknown>;
-  templates: readonly Template[];
 }
 
-export function ResumeNewForm({ profile, templates }: ResumeNewFormProps) {
+export function ResumeNewForm({ profile }: ResumeNewFormProps) {
   const router = useRouter();
-  const [template, setTemplate] = useState(templates[0]?.id ?? "professional");
+  const [template, setTemplate] = useState<LayoutTemplateId>("clean");
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,27 +56,33 @@ export function ResumeNewForm({ profile, templates }: ResumeNewFormProps) {
   }
 
   return (
-    <div className="max-w-xl space-y-6">
+    <div className="max-w-2xl space-y-6">
       <div>
-        <label className="block text-sm text-zinc-400 mb-2">Template</label>
-        <select
-          value={template}
-          onChange={(e) => setTemplate(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
-        >
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label}
-            </option>
+        <label className="block text-sm font-medium text-zinc-300 mb-3">Choose a layout</label>
+        <div className="grid gap-3">
+          {LAYOUT_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTemplate(t.id)}
+              className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
+                template === t.id
+                  ? "border-indigo-500 bg-indigo-500/10 ring-1 ring-indigo-500"
+                  : "border-zinc-700 bg-zinc-800/50 hover:border-zinc-500"
+              }`}
+            >
+              <span className="block font-semibold text-white">{t.label}</span>
+              <span className="block text-sm text-zinc-400 mt-0.5">{t.description}</span>
+            </button>
           ))}
-        </select>
+        </div>
       </div>
       {error && <p className="text-red-400 text-sm">{error}</p>}
       <button
         type="button"
         onClick={handleCreate}
         disabled={generating}
-        className="px-6 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 disabled:opacity-50"
+        className="px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 disabled:opacity-50 transition-colors"
       >
         {generating ? "Generating…" : "Generate resume from profile"}
       </button>

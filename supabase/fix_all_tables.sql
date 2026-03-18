@@ -101,13 +101,23 @@ CREATE TABLE IF NOT EXISTS public.applications (
   source TEXT NOT NULL DEFAULT 'web',
   match_summary JSONB,
   interview_prep JSONB,
+  tailored_resume JSONB,
+  cover_letter JSONB,
+  ats_score INTEGER,
+  ats_feedback JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 ALTER TABLE public.applications
   ADD COLUMN IF NOT EXISTS match_summary JSONB,
-  ADD COLUMN IF NOT EXISTS interview_prep JSONB;
+  ADD COLUMN IF NOT EXISTS interview_prep JSONB,
+  ADD COLUMN IF NOT EXISTS tailored_resume JSONB,
+  ADD COLUMN IF NOT EXISTS cover_letter JSONB,
+  ADD COLUMN IF NOT EXISTS ats_score INTEGER,
+  ADD COLUMN IF NOT EXISTS ats_feedback JSONB;
+
+NOTIFY pgrst, 'reload schema';
 
 CREATE INDEX IF NOT EXISTS idx_applications_user_id ON public.applications(user_id);
 CREATE INDEX IF NOT EXISTS idx_applications_status ON public.applications(status);

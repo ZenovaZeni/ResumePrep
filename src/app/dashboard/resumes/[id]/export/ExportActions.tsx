@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { pdf } from "@react-pdf/renderer";
 import type { ResumeData } from "@/types/resume";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 
@@ -18,7 +17,10 @@ export function ExportActions({ resumeId, resumeName, data }: ExportActionsProps
   async function handleExportPDF() {
     setExporting("pdf");
     try {
-      const { ResumePDFDocument } = await import("@/lib/resume-pdf");
+      const [{ pdf }, { ResumePDFDocument }] = await Promise.all([
+        import("@react-pdf/renderer"),
+        import("@/lib/resume-pdf"),
+      ]);
       const blob = await pdf(<ResumePDFDocument data={data} />).toBlob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

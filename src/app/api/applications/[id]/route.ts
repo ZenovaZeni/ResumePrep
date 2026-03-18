@@ -19,7 +19,13 @@ export async function PATCH(
     date_applied,
     status,
     notes,
-  } = body;
+    cover_letter,
+    tailored_resume,
+    interview_prep,
+    ats_score,
+    ats_feedback,
+    match_summary,
+  } = body as Record<string, unknown>;
 
   const updates: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
@@ -31,6 +37,12 @@ export async function PATCH(
   if (date_applied !== undefined) updates.date_applied = date_applied;
   if (status !== undefined) updates.status = status;
   if (notes !== undefined) updates.notes = notes;
+  if (cover_letter !== undefined) updates.cover_letter = cover_letter;
+  if (tailored_resume !== undefined) updates.tailored_resume = tailored_resume;
+  if (interview_prep !== undefined) updates.interview_prep = interview_prep;
+  if (ats_score !== undefined) updates.ats_score = ats_score;
+  if (ats_feedback !== undefined) updates.ats_feedback = ats_feedback;
+  if (match_summary !== undefined) updates.match_summary = match_summary;
 
   const { error } = await supabase
     .from("applications")

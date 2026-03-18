@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { generateCoverLetter } from "@/lib/ai";
+import { generateStructuredCoverLetter } from "@/lib/ai";
 import { FREE_COVER_LETTERS_PER_MONTH, isPro } from "@/lib/tier";
 
 export async function POST(request: Request) {
@@ -67,12 +67,14 @@ export async function POST(request: Request) {
     const latestResume = resumeResult.data?.[0]?.resume_data ?? null;
     const profileForAI = {
       name: getDisplayName(profile),
-      email: user.email,
+      email: user.email ?? "",
+      phone: career?.phone ?? "",
+      location: career?.location ?? "",
       ...career,
       ...(latestResume ? { resume: latestResume } : {}),
     };
 
-    const content = await generateCoverLetter(
+    const coverLetterModel = await generateStructuredCoverLetter(
       profileForAI,
       job_description,
       company_name,
@@ -80,19 +82,48 @@ export async function POST(request: Request) {
       highlight
     );
 
+    // Serialize to text for generated_documents.content (TEXT column)
+    const contentText = [
+      coverLetterModel.senderName,
+      coverLetterModel.senderEmail,
+      [coverLetterModel.senderPhone, coverLetterModel.senderLocation].filter(Boolean).join(" · "),
+      "",
+      coverLetterModel.date,
+      "",
+      coverLetterModel.greeting,
+      "",
+      ...coverLetterModel.paragraphs.map((p) => `${p}\n`),
+      coverLetterModel.closing,
+      coverLetterModel.signature,
+    ]
+      .filter((l) => l !== null && l !== undefined)
+      .join("\n");
+
     const { data: doc, error } = await supabase
       .from("generated_documents")
       .insert({
         user_id: user.id,
         type: "cover_letter",
         application_id: application_id ?? null,
-        content,
+        content: contentText,
       })
       .select("id")
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ content, documentId: doc.id });
+
+    // Also persist structured model on the application row if we have one.
+    // Non-blocking: silently swallowed if cover_letter column doesn't exist yet.
+    if (application_id) {
+      await supabase
+        .from("applications")
+        .update({ cover_letter: coverLetterModel, updated_at: new Date().toISOString() })
+        .eq("id", application_id)
+        .eq("user_id", user.id)
+        .then(() => null);
+    }
+
+    return NextResponse.json({ coverLetter: coverLetterModel, content: contentText, documentId: doc.id });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Server error";
     return NextResponse.json({ error: message }, { status: 500 });

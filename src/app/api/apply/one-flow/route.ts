@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { tailorResume, generateCoverLetter, analyzeMatch } from "@/lib/ai";
+import { tailorResume, generateStructuredCoverLetter, analyzeMatch } from "@/lib/ai";
 import { getDisplayName } from "@/lib/profile";
 import { FREE_COVER_LETTERS_PER_MONTH, isPro } from "@/lib/tier";
 
@@ -109,11 +109,12 @@ export async function POST(request: Request) {
       applicationId = app.id;
     }
 
-    // Assemble the profile object the AI uses — include resume data so the
-    // cover letter can reference real bullets, companies, and metrics
+    // Assemble the profile object the AI uses
     const profileForAI = {
       name: getDisplayName(profileData),
       email: user.email ?? "",
+      phone: career?.phone ?? "",
+      location: career?.location ?? "",
       ...career,
       resume: resume.resume_data,
     };
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
     // Run all three AI calls in parallel — analyzeMatch failure is non-fatal
     const [tailoredResult, coverLetterResult, matchResult] = await Promise.allSettled([
       tailorResume(resume.resume_data, career ?? {}, job_description.trim()),
-      generateCoverLetter(profileForAI, job_description.trim(), company, title),
+      generateStructuredCoverLetter(profileForAI, job_description.trim(), company, title),
       analyzeMatch(profileForAI, job_description.trim(), title, company),
     ]);
 
@@ -139,8 +140,12 @@ export async function POST(request: Request) {
     }
 
     const tailoredJson = tailoredResult.value;
-    const coverLetterContent = coverLetterResult.value;
+    const coverLetterModel = coverLetterResult.value;
     const matchSummary = matchResult.status === "fulfilled" ? matchResult.value : null;
+    const atsScore = matchSummary?.matchScore ?? null;
+    const atsFeedback = matchSummary
+      ? { gaps: matchSummary.gaps, missingKeywords: matchSummary.missingKeywords, strengths: matchSummary.strengths }
+      : null;
 
     let tailoredData: unknown;
     try {
@@ -152,7 +157,24 @@ export async function POST(request: Request) {
       );
     }
 
-    // Write variant and document in parallel, also persist match summary on the application row
+    // Serialize cover letter for the generated_documents table (TEXT column)
+    const coverLetterText = [
+      `${coverLetterModel.senderName}`,
+      coverLetterModel.senderEmail,
+      [coverLetterModel.senderPhone, coverLetterModel.senderLocation].filter(Boolean).join(" · "),
+      "",
+      coverLetterModel.date,
+      "",
+      coverLetterModel.greeting,
+      "",
+      ...coverLetterModel.paragraphs.map((p) => `${p}\n`),
+      coverLetterModel.closing,
+      coverLetterModel.signature,
+    ]
+      .filter((l) => l !== null && l !== undefined)
+      .join("\n");
+
+    // Write variant and document in parallel
     const [variantRes, docRes] = await Promise.all([
       supabase
         .from("resume_variants")
@@ -170,18 +192,29 @@ export async function POST(request: Request) {
           user_id: user.id,
           type: "cover_letter",
           application_id: applicationId,
-          content: coverLetterContent,
+          content: coverLetterText,
         })
         .select("id")
         .single(),
     ]);
 
-    if (applicationId && matchSummary) {
+    // Persist full kit snapshot on application row if we created one.
+    // Non-blocking: if kit columns don't exist yet (migration not applied),
+    // the error is silently swallowed so generation still succeeds.
+    if (applicationId) {
       await supabase
         .from("applications")
-        .update({ match_summary: matchSummary })
+        .update({
+          match_summary: matchSummary ?? null,
+          ats_score: atsScore,
+          ats_feedback: atsFeedback,
+          tailored_resume: tailoredData,
+          cover_letter: coverLetterModel,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", applicationId)
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .then(() => null); // swallow error — column may not exist until migration is run
     }
 
     if (variantRes.error) {
@@ -193,12 +226,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       tailoredResumeData: tailoredData,
-      coverLetter: coverLetterContent,
+      coverLetter: coverLetterModel,
       applicationId: applicationId ?? undefined,
       variantId: variantRes.data.id,
       documentId: docRes.data.id,
       resumeId: resume.id,
       matchSummary,
+      atsScore,
+      atsFeedback,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Server error";

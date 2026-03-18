@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ResumeNewForm } from "./ResumeNewForm";
-import { RESUME_TEMPLATES } from "@/types/resume";
 
 export default async function NewResumePage() {
   const supabase = await createClient();
@@ -16,6 +15,8 @@ export default async function NewResumePage() {
     contact: {
       name: getDisplayName(profile),
       email: user.email ?? undefined,
+      phone: career?.phone ?? undefined,
+      location: career?.location ?? undefined,
     },
     headline: career?.headline ?? undefined,
     summary: career?.summary ?? undefined,
@@ -35,10 +36,7 @@ export default async function NewResumePage() {
           Choose a template. We&apos;ll generate a first draft from your career profile &mdash; you can edit everything before saving.
         </p>
       </div>
-      <ResumeNewForm
-        profile={profileForResume}
-        templates={RESUME_TEMPLATES}
-      />
+      <ResumeNewForm profile={profileForResume} />
     </div>
   );
 }

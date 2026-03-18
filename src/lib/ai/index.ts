@@ -98,11 +98,33 @@ export interface ResumeFromProfileInput {
 export async function generateResumeFromProfile(
   input: ResumeFromProfileInput
 ): Promise<string> {
-  const system = `You are a professional resume writer. Output only valid JSON. No markdown, no code fence.`;
-  const prompt = `Generate a structured resume as a single JSON object with keys: contact (name, email, phone, location, linkedin, website), summary, experience (array of {company, role, location?, start, end, bullets}), education (array of {school, degree, field?, start, end}), skills (array of strings), certifications (array), projects (array of {name, description?, url?, bullets?}), achievements (array). Use the following profile and template "${input.template}". Format dates consistently. Make bullet points achievement-oriented and concise.
+  const system = `You are a professional resume writer. Output only valid JSON. No markdown, no code fence.
 
-Profile:
+CRITICAL RULES — failure to follow these is a disqualifying error:
+1. You MUST NOT invent, fabricate, or add any company names, job titles, dates, education institutions, degrees, skills, certifications, project names, or achievements that do not appear in the provided profile data.
+2. You MAY only rewrite or improve the wording of existing bullets and summary using better action verbs and clearer phrasing — the underlying facts (companies, titles, dates, metrics) must be preserved exactly.
+3. If experience/education/skills/certifications/projects/achievements are empty or absent in the profile, output empty arrays [] for those keys — do NOT fill them with examples.
+4. The contact section MUST be taken directly from the profile contact fields. Do not add phone/email/location that is not in the profile.`;
+
+  const hasExperience = (input.profile.experience?.length ?? 0) > 0;
+  const hasEducation = (input.profile.education?.length ?? 0) > 0;
+  const hasSkills = (input.profile.skills?.length ?? 0) > 0;
+
+  const prompt = `Generate a structured resume as a single JSON object with these keys:
+- contact: { name, email, phone, location, linkedin, website } — copy EXACTLY from the profile, do not add or change anything
+- summary: rewrite the profile summary to be impactful and concise (2-4 sentences) — do NOT invent new facts
+- experience: array of { company, role, location?, start, end, bullets } — use EXACTLY the companies, roles, and dates from the profile; only improve bullet wording${hasExperience ? "" : " — profile has no experience, output []"}
+- education: array of { school, degree, field?, start, end } — copy EXACTLY from profile${hasEducation ? "" : " — profile has no education, output []"}
+- skills: array of strings — only include skills listed in the profile${hasSkills ? "" : " — profile has no skills, output []"}
+- certifications: copy exactly from profile, or []
+- projects: copy exactly from profile (improve description wording only), or []
+- achievements: copy exactly from profile, or []
+
+Template style hint: "${input.template}" — use this to guide spacing and tone only, not to add content.
+
+Profile data (this is the ONLY source of truth):
 ${JSON.stringify(input.profile, null, 2)}`;
+
   const raw = await getCompletion(prompt, { system, maxTokens: 4096 });
   const cleaned = raw.replace(/^```\w*\n?|\n?```$/g, "").trim();
   return cleaned;
@@ -138,15 +160,8 @@ export interface ATSScoreResult {
   feedback: string[];
 }
 
-export interface MatchSummary {
-  matchScore: number;
-  topKeywords: string[];
-  matchedKeywords: string[];
-  missingKeywords: string[];
-  strengths: string[];
-  gaps: string[];
-  suggestedAngle: string;
-}
+export type { MatchSummary } from "@/types/database";
+import type { MatchSummary } from "@/types/database";
 
 export async function analyzeMatch(
   profile: unknown,
@@ -154,22 +169,28 @@ export async function analyzeMatch(
   jobTitle: string,
   companyName: string
 ): Promise<MatchSummary> {
-  const system = `You are a job-fit analyst. Analyze how well a candidate matches a job description. Output only valid JSON. No markdown, no code fence.`;
+  const system = `You are a job-fit analyst. Analyze how well a candidate matches a job description. Output only valid JSON. No markdown, no code fence.
+
+CRITICAL RULES:
+- Every strength must cite a specific company, role, skill, or achievement from the candidate's profile.
+- Do NOT invent skills, experiences, or accomplishments not present in the profile.
+- matchedKeywords must only include keywords the candidate demonstrably has based on their profile data.
+- If the candidate lacks data for a strength, omit it or leave strengths shorter.`;
   const prompt = `Analyze this candidate's fit for: ${jobTitle} at ${companyName}.
 
 Job description:
 ${jobDescription}
 
-Candidate profile:
+Candidate profile (only use data from this — do not invent):
 ${JSON.stringify(profile)}
 
 Output this exact JSON:
 {
   "matchScore": <0-100, honest overall fit score>,
   "topKeywords": [<5-8 most important skills and terms the JD requires>],
-  "matchedKeywords": [<keywords from topKeywords the candidate demonstrably has>],
+  "matchedKeywords": [<only keywords the candidate demonstrably has from their profile>],
   "missingKeywords": [<keywords from topKeywords the candidate lacks or does not mention>],
-  "strengths": [<2-3 specific reasons this candidate is a strong match, referencing their actual experience>],
+  "strengths": [<2-3 specific reasons this candidate is a strong match, citing their ACTUAL experience only>],
   "gaps": [<1-2 specific gaps or concerns, honest and concrete>],
   "suggestedAngle": "<1-2 sentences: which part of their background to lead with for this application>"
 }`;
@@ -217,26 +238,117 @@ export async function tailorResume(
   profile: unknown,
   jobDescription: string
 ): Promise<string> {
-  const system = `You are a resume expert optimizing for ATS and hiring manager relevance. Output only valid JSON with the identical structure as the input resume. No markdown, no code fence.`;
+  const system = `You are a resume expert optimizing for ATS and hiring manager relevance. Output only valid JSON with the identical structure as the input resume. No markdown, no code fence.
+
+CRITICAL GROUNDING RULES — violating any of these is a disqualifying error:
+1. NEVER add, invent, or fabricate new companies, job titles, dates, schools, or degrees.
+2. NEVER add skills or certifications not already present in the input resume.
+3. NEVER inflate or modify numeric metrics (e.g. do not change "20%" to "40%").
+4. You MAY only: reword bullets for clarity and impact, reorder skills, rewrite the summary (within existing facts).
+5. The output JSON must have the IDENTICAL structure and keys as the input resume.`;
   const prompt = `Tailor this resume to the job description. Follow these rules exactly:
-1. Extract the 5-8 most critical keywords and skills from the job description
-2. Weave those exact terms into experience bullets where the candidate genuinely has that experience
-3. Rewrite the summary to open with direct fit for this specific role (reference the job title or core requirement from the JD)
-4. Reorder the skills array so JD-matched skills appear first
-5. Keep all company names, dates, job titles, and any metrics exactly as written — never invent or inflate numbers
-6. Only rewrite existing content — do not add experience the candidate does not have
+1. Extract the 5-8 most critical keywords from the job description
+2. Weave those exact terms into EXISTING experience bullets where genuinely applicable
+3. Rewrite the summary to open with direct fit for this specific role — using only the candidate's real background
+4. Reorder the skills array so JD-matched skills appear first (but do not add new skills)
+5. Keep all company names, dates, job titles, and metrics EXACTLY as written
+6. Do NOT add any experience or achievements not already in the resume
 7. Return the full resume as one JSON object with identical structure to the input
 
-Resume:
+Resume to tailor:
 ${JSON.stringify(resumeData)}
 
-Profile context (for reference):
+Profile context (for reference only, to understand the candidate's background):
 ${JSON.stringify(profile)}
 
 Job description:
 ${jobDescription}`;
   const raw = await getCompletion(prompt, { system, maxTokens: 4096 });
   return raw.replace(/^```\w*\n?|\n?```$/g, "").trim();
+}
+
+export type { CoverLetterModel } from "@/types/database";
+import type { CoverLetterModel } from "@/types/database";
+
+/**
+ * Generates a structured cover letter as a CoverLetterModel JSON object.
+ * The AI fills in the writing parts (greeting, paragraphs, closing, recipientName).
+ * Static fields (senderName, date, etc.) are passed in by the caller from the profile.
+ */
+export async function generateStructuredCoverLetter(
+  profile: Record<string, unknown> & { name?: string; email?: string; phone?: string; location?: string },
+  jobDescription: string,
+  companyName: string,
+  jobTitle: string,
+  highlight?: string
+): Promise<CoverLetterModel> {
+  const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+  const system = `You are a sharp, experienced cover letter writer. Output only a single valid JSON object. No markdown, no code fence.
+
+CRITICAL RULES — violating any of these is a disqualifying error:
+- Every accomplishment, metric, or specific claim in the cover letter MUST come from the candidate's profile data.
+- Do NOT invent companies, job titles, metrics, projects, or achievements.
+- Do NOT add skills or experience not present in the profile.
+- You MAY: rephrase for persuasiveness, select which real experience to highlight, adapt tone to the company.`;
+  let prompt = `Write a cover letter for the ${jobTitle} role at ${companyName}.
+
+Rules:
+- 3 body paragraphs in "paragraphs": (1) hook — specific value statement tied to this role using the candidate's real background, (2) evidence — 1-2 concrete accomplishments from the candidate's ACTUAL experience, (3) close — specific reason for this company
+- Pull 3-5 of the most critical requirements from the job description; address them using only the candidate's real background
+- First paragraph must hook immediately — lead with value, not "I am writing to apply"
+- Banned phrases: "I am excited/passionate/thrilled", "I would be a valuable asset", "I look forward to hearing from you"
+- 220-300 words total across the 3 paragraphs
+- If you can infer a hiring manager name from the job description, use it; otherwise use "Hiring Manager"
+- Match company tone: startup/tech → direct and confident; enterprise/finance → professional; creative → personality
+
+Job description:
+${jobDescription}
+
+Candidate profile (ONLY use data from this — do not invent):
+${JSON.stringify(profile)}
+${highlight?.trim() ? `\nHighlight specifically (from their real experience): ${highlight.trim()}` : ""}
+
+Output EXACTLY this JSON shape (no other keys):
+{
+  "recipientName": "<hiring manager name or 'Hiring Manager'>",
+  "greeting": "<e.g. 'Dear Sarah Chen,' or 'Dear Hiring Manager,'>",
+  "paragraphs": ["<paragraph 1>", "<paragraph 2>", "<paragraph 3>"],
+  "closing": "<e.g. 'Best regards,' or 'Sincerely,'>",
+  "signature": "${profile.name ?? "Applicant"}"
+}`;
+
+  const raw = await getCompletion(prompt, { system, maxTokens: 1024 });
+  const cleaned = raw.replace(/^```\w*\n?|\n?```$/g, "").trim();
+  let parsed: {
+    recipientName?: string;
+    greeting?: string;
+    paragraphs?: unknown;
+    closing?: string;
+    signature?: string;
+  };
+  try {
+    parsed = JSON.parse(cleaned) as typeof parsed;
+  } catch {
+    parsed = {};
+  }
+
+  return {
+    senderName: (profile.name as string | undefined) ?? "",
+    senderEmail: (profile.email as string | undefined) ?? "",
+    senderPhone: (profile.phone as string | undefined) ?? undefined,
+    senderLocation: (profile.location as string | undefined) ?? undefined,
+    date: today,
+    recipientName: typeof parsed.recipientName === "string" ? parsed.recipientName : "Hiring Manager",
+    companyName,
+    jobTitle,
+    greeting: typeof parsed.greeting === "string" ? parsed.greeting : "Dear Hiring Manager,",
+    paragraphs: Array.isArray(parsed.paragraphs)
+      ? (parsed.paragraphs as unknown[]).filter((p): p is string => typeof p === "string")
+      : [cleaned],
+    closing: typeof parsed.closing === "string" ? parsed.closing : "Best regards,",
+    signature: typeof parsed.signature === "string" ? parsed.signature : (profile.name as string | undefined) ?? "",
+  };
 }
 
 export async function generateCoverLetter(

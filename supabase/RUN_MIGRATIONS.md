@@ -30,6 +30,8 @@ idempotently, sets up RLS policies, and refreshes the schema cache.
    - `migrations/20250316000004_saved_careers.sql`
    - `migrations/20250317000005_fix_saved_careers.sql`
    - `migrations/20250317000006_saved_roadmaps.sql`
+   - `migrations/20250318000007_application_outputs.sql`
+   - `migrations/20250318000008_kit_columns.sql`
 
 ---
 

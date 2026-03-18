@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { AuthToast } from "@/components/AuthToast";
 import { VoiceButton } from "@/components/VoiceButton";
+import { TagInput } from "@/components/TagInput";
 import type { ProfilesRow } from "@/types/database";
 import type { CareerProfilesRow } from "@/types/database";
 import type { CareerProfileFormData } from "@/types/profile";
+import { computeProfileCompletion } from "@/lib/profile-completion";
 
 interface ProfileFormProps {
   profile: ProfilesRow | undefined;
@@ -36,20 +38,20 @@ interface ScoreField {
 }
 
 function useCompletionScore(form: CareerProfileFormData): { score: number; fields: ScoreField[] } {
-  const fields: ScoreField[] = [
-    { label: "First name", filled: Boolean(form.contact?.firstName?.trim()) },
-    { label: "Email", filled: Boolean(form.contact?.email?.trim()) },
-    { label: "Headline", filled: Boolean(form.headline?.trim()) },
-    { label: "Summary", filled: Boolean(form.summary?.trim()) && (form.summary?.trim().length ?? 0) > 40 },
-    { label: "Target roles", filled: (form.target_roles?.length ?? 0) > 0 },
-    { label: "Work experience", filled: (form.experience?.length ?? 0) > 0 },
-    { label: "Education", filled: (form.education?.length ?? 0) > 0 },
-    { label: "Skills", filled: (form.skills?.length ?? 0) >= 3 },
-    { label: "Location", filled: Boolean(form.contact?.location?.trim()) },
-    { label: "LinkedIn or website", filled: Boolean(form.contact?.linkedin?.trim() ?? form.contact?.website?.trim()) },
-  ];
-  const filled = fields.filter((f) => f.filled).length;
-  const score = Math.round((filled / fields.length) * 100);
+  const { score, items } = computeProfileCompletion({
+    firstName: form.contact?.firstName,
+    email: form.contact?.email,
+    location: form.contact?.location,
+    headline: form.headline,
+    summary: form.summary,
+    targetRoles: form.target_roles,
+    experience: form.experience,
+    education: form.education,
+    skills: form.skills,
+    linkedin: form.contact?.linkedin,
+    website: form.contact?.website,
+  });
+  const fields: ScoreField[] = items.map((item) => ({ label: item.label, filled: item.done }));
   return { score, fields };
 }
 
@@ -281,6 +283,8 @@ export function ProfileForm({
         lastName: profile?.last_name ?? prev.contact?.lastName ?? "",
         name: [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || prev.contact?.name,
         email: userEmail ?? prev.contact?.email,
+        phone: careerProfile?.phone ?? prev.contact?.phone ?? "",
+        location: careerProfile?.location ?? prev.contact?.location ?? "",
       },
       experience: Array.isArray(exp) ? exp : prev.experience,
       education: Array.isArray(edu) ? edu : prev.education,
@@ -348,6 +352,8 @@ export function ProfileForm({
         projects: form.projects ?? null,
         achievements: form.achievements ?? null,
         metrics: form.metrics ?? null,
+        phone: form.contact?.phone?.trim() || null,
+        location: form.contact?.location?.trim() || null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
@@ -518,6 +524,56 @@ export function ProfileForm({
     }
   }
 
+  type ImportPayload = {
+    profile?: { first_name?: string | null; last_name?: string | null };
+    career?: {
+      headline?: string | null;
+      summary?: string | null;
+      phone?: string | null;
+      location?: string | null;
+      target_roles?: string[];
+      career_goals?: string | null;
+      raw_experience?: CareerProfileFormData["experience"];
+      education?: CareerProfileFormData["education"];
+      skills?: string[];
+      certifications?: CareerProfileFormData["certifications"];
+      projects?: CareerProfileFormData["projects"];
+      achievements?: string[];
+    };
+  };
+
+  function applyImport({ profile: impProfile, career: impCareer }: ImportPayload) {
+    setForm((prev) => ({
+      ...prev,
+      headline: impCareer?.headline ?? prev.headline,
+      summary: impCareer?.summary ?? prev.summary,
+      target_roles: impCareer?.target_roles ?? prev.target_roles,
+      career_goals: impCareer?.career_goals ?? prev.career_goals,
+      contact: {
+        ...prev.contact,
+        firstName: impProfile?.first_name ?? prev.contact?.firstName ?? "",
+        lastName: impProfile?.last_name ?? prev.contact?.lastName ?? "",
+        name:
+          [impProfile?.first_name, impProfile?.last_name].filter(Boolean).join(" ").trim() ||
+          prev.contact?.name,
+        phone: impCareer?.phone ?? prev.contact?.phone ?? "",
+        location: impCareer?.location ?? prev.contact?.location ?? "",
+      },
+      experience: Array.isArray(impCareer?.raw_experience)
+        ? impCareer.raw_experience
+        : prev.experience,
+      education: Array.isArray(impCareer?.education) ? impCareer.education : prev.education,
+      skills: impCareer?.skills ?? prev.skills,
+      certifications: Array.isArray(impCareer?.certifications)
+        ? impCareer.certifications
+        : prev.certifications,
+      projects: Array.isArray(impCareer?.projects) ? impCareer.projects : prev.projects,
+      achievements: Array.isArray(impCareer?.achievements)
+        ? impCareer.achievements
+        : prev.achievements,
+    }));
+  }
+
   async function handleImport() {
     if (!importPaste.trim()) return;
     setImportLoading(true);
@@ -528,54 +584,12 @@ export function ProfileForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paste: importPaste.trim() }),
       });
-      const data = (await res.json()) as {
-        error?: string;
-        profile?: { first_name?: string | null; last_name?: string | null };
-        career?: {
-          headline?: string | null;
-          summary?: string | null;
-          target_roles?: string[];
-          career_goals?: string | null;
-          raw_experience?: CareerProfileFormData["experience"];
-          education?: CareerProfileFormData["education"];
-          skills?: string[];
-          certifications?: CareerProfileFormData["certifications"];
-          projects?: CareerProfileFormData["projects"];
-          achievements?: string[];
-        };
-      };
+      const data = (await res.json()) as { error?: string } & ImportPayload;
       if (!res.ok) {
         setMessage({ type: "error", text: data.error ?? "Import failed." });
         return;
       }
-      const { profile: impProfile, career: impCareer } = data;
-      setForm((prev) => ({
-        ...prev,
-        headline: impCareer?.headline ?? prev.headline,
-        summary: impCareer?.summary ?? prev.summary,
-        target_roles: impCareer?.target_roles ?? prev.target_roles,
-        career_goals: impCareer?.career_goals ?? prev.career_goals,
-        contact: {
-          ...prev.contact,
-          firstName: impProfile?.first_name ?? prev.contact?.firstName ?? "",
-          lastName: impProfile?.last_name ?? prev.contact?.lastName ?? "",
-          name:
-            [impProfile?.first_name, impProfile?.last_name].filter(Boolean).join(" ").trim() ||
-            prev.contact?.name,
-        },
-        experience: Array.isArray(impCareer?.raw_experience)
-          ? impCareer.raw_experience
-          : prev.experience,
-        education: Array.isArray(impCareer?.education) ? impCareer.education : prev.education,
-        skills: impCareer?.skills ?? prev.skills,
-        certifications: Array.isArray(impCareer?.certifications)
-          ? impCareer.certifications
-          : prev.certifications,
-        projects: Array.isArray(impCareer?.projects) ? impCareer.projects : prev.projects,
-        achievements: Array.isArray(impCareer?.achievements)
-          ? impCareer.achievements
-          : prev.achievements,
-      }));
+      applyImport(data);
       setMessage({ type: "ok", text: "Profile imported. Review below and save when ready." });
       setImportPaste("");
     } catch {
@@ -616,11 +630,50 @@ export function ProfileForm({
       {/* Completion score */}
       <CompletionBar score={score} fields={completionFields} />
 
-      {/* ── Import paste ────────────────────────────────────────────────────── */}
+      {/* ── Import paste / file ─────────────────────────────────────────────── */}
       <Section
         title="Quick import"
-        hint="Paste your LinkedIn About + Experience text or an old resume — AI fills the form automatically."
+        hint="Paste your LinkedIn / resume text, or upload a PDF/text file — AI fills the form automatically."
       >
+        {/* File upload */}
+        <div>
+          <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Upload resume (PDF or .txt)</label>
+          <div className="flex items-center gap-3">
+            <label className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-sm text-[var(--text-secondary)] hover:border-[var(--accent)] transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+              Choose file
+              <input
+                type="file"
+                accept=".pdf,.txt,.text,text/plain,application/pdf"
+                className="sr-only"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setImportLoading(true);
+                  setMessage(null);
+                  try {
+                    const fd = new FormData();
+                    fd.append("file", file);
+                    const res = await fetch("/api/profile/import-resume", { method: "POST", body: fd });
+                    const json = await res.json();
+                    if (!res.ok) throw new Error(json.error ?? "Import failed");
+                    applyImport(json);
+                    setMessage({ type: "ok", text: `Resume imported from ${file.name} — review and save.` });
+                  } catch (err) {
+                    setMessage({ type: "error", text: err instanceof Error ? err.message : "Import failed" });
+                  } finally {
+                    setImportLoading(false);
+                    e.target.value = "";
+                  }
+                }}
+              />
+            </label>
+            {importLoading && <span className="text-xs text-[var(--text-tertiary)]">Extracting…</span>}
+          </div>
+          <p className="text-xs text-[var(--text-tertiary)] mt-1">Or paste text below.</p>
+        </div>
+
+        {/* Paste area */}
         <textarea
           value={importPaste}
           onChange={(e) => setImportPaste(e.target.value.slice(0, MAX_IMPORT_LENGTH))}
@@ -1169,48 +1222,16 @@ export function ProfileForm({
                 .split(/[,\n]/)
                 .map((s) => s.trim())
                 .filter(Boolean);
-              setForm((p) => ({ ...p, skills: [...(p.skills ?? []), ...extra] }));
+              setForm((p) => ({ ...p, skills: [...new Set([...(p.skills ?? []), ...extra])] }));
             }}
           >
-            <input
-              type="text"
-              value={form.skills?.join(", ") ?? ""}
-              onChange={(e) =>
-                setForm((p) => ({
-                  ...p,
-                  skills: e.target.value
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                }))
-              }
-              placeholder="JavaScript, React, Node.js, Python, AWS, Docker…"
-              className={inputCls()}
+            <TagInput
+              tags={form.skills ?? []}
+              onChange={(tags) => setForm((p) => ({ ...p, skills: tags }))}
+              placeholder="Type a skill, press Enter or comma to add…"
             />
           </VoiceField>
-          <p className="text-xs text-[var(--text-tertiary)]">Comma-separated. More is better — AI selects the most relevant ones per job.</p>
-          {(form.skills?.length ?? 0) > 0 && (
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {(form.skills ?? []).map((s, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/20"
-                >
-                  {s}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setForm((p) => ({ ...p, skills: p.skills?.filter((_, idx) => idx !== i) }))
-                    }
-                    className="opacity-60 hover:opacity-100 transition ml-0.5"
-                    aria-label={`Remove ${s}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
+          <p className="text-xs text-[var(--text-tertiary)]">Press Enter or type a comma to add a skill. Click × to remove. Add as many as you like — AI picks the most relevant per job.</p>
         </Section>
 
         {/* ── Projects ─────────────────────────────────────────────────────── */}

@@ -86,21 +86,24 @@ export function MarketingNav() {
           aria-hidden
         />
         <aside
-          className={`absolute top-0 right-0 bottom-0 z-10 w-[min(300px,85vw)] border-l border-[var(--border-subtle)] shadow-2xl flex flex-col transition-transform duration-200 ease-out ${
+          className={`absolute top-0 right-0 bottom-0 z-10 w-[min(300px,85vw)] shadow-2xl flex flex-col transition-transform duration-200 ease-out ${
             open ? "translate-x-0" : "translate-x-full"
           }`}
           style={{
             paddingTop: "env(safe-area-inset-top)",
             paddingBottom: "env(safe-area-inset-bottom)",
-            backgroundColor: "#18181b",
+            backgroundColor: "#0a0a0b",
+            borderLeft: "1px solid rgba(255,255,255,0.12)",
           }}
         >
-          <div className="flex items-center justify-between h-16 px-5 border-b border-[var(--border-subtle)]">
-            <span className="text-base font-semibold text-[var(--text-primary)]">Smart Resume</span>
+          {/* Drawer header */}
+          <div className="flex items-center justify-between h-16 px-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.10)" }}>
+            <span className="text-base font-bold text-white tracking-tight">Smart Resume</span>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="p-2 -mr-2 rounded-[var(--radius-sm)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-glass)] touch-manipulation"
+              className="p-2 -mr-2 rounded-lg touch-manipulation"
+              style={{ color: "#fff", backgroundColor: "rgba(255,255,255,0.08)" }}
               aria-label="Close menu"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -108,41 +111,43 @@ export function MarketingNav() {
               </svg>
             </button>
           </div>
-          <nav className="flex flex-col py-4">
-            <a
-              href="#how-it-works"
-              onClick={() => setOpen(false)}
-              className="px-5 py-3.5 text-base font-medium text-[var(--text-primary)] hover:bg-[var(--bg-glass)] transition-colors"
-            >
-              How it works
-            </a>
-            <a
-              href="#features"
-              onClick={() => setOpen(false)}
-              className="px-5 py-3.5 text-base font-medium text-[var(--text-primary)] hover:bg-[var(--bg-glass)] transition-colors"
-            >
-              Features
-            </a>
-            <a
-              href="#pricing"
-              onClick={() => setOpen(false)}
-              className="px-5 py-3.5 text-base font-medium text-[var(--text-primary)] hover:bg-[var(--bg-glass)] transition-colors"
-            >
-              Pricing
-            </a>
+
+          {/* Nav links */}
+          <nav className="flex flex-col py-3">
+            {[
+              { href: "#how-it-works", label: "How it works" },
+              { href: "#features", label: "Features" },
+              { href: "#pricing", label: "Pricing" },
+            ].map(({ href, label }) => (
+              <a
+                key={href}
+                href={href}
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-3 px-5 py-4 text-base font-semibold transition-colors"
+                style={{ color: "#ffffff" }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.07)")}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
+                {label}
+              </a>
+            ))}
           </nav>
-          <div className="mt-auto px-5 pb-6 flex flex-col gap-3 border-t border-[var(--border-subtle)] pt-4">
+
+          {/* CTA buttons */}
+          <div className="mt-auto px-5 pb-8 flex flex-col gap-3" style={{ borderTop: "1px solid rgba(255,255,255,0.10)", paddingTop: "1.25rem" }}>
             <Link
               href="/login"
               onClick={() => setOpen(false)}
-              className="btn-secondary w-full justify-center py-3"
+              className="flex items-center justify-center w-full py-3.5 rounded-xl text-sm font-semibold transition-colors"
+              style={{ color: "#ffffff", backgroundColor: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.15)" }}
             >
               Log in
             </Link>
             <Link
               href="/signup"
               onClick={() => setOpen(false)}
-              className="btn-primary w-full justify-center py-3"
+              className="flex items-center justify-center w-full py-3.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-90"
+              style={{ backgroundColor: "#6366f1" }}
             >
               Get started free
             </Link>

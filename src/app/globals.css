@@ -82,6 +82,49 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Animation keyframes ──────────────────────────────────────────────── */
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33% { transform: translateY(-10px) rotate(0.5deg); }
+  66% { transform: translateY(-6px) rotate(-0.3deg); }
+}
+@keyframes float-delayed {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-14px); }
+}
+@keyframes orb-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.15); }
+}
+@keyframes orb-pulse-2 {
+  0%, 100% { opacity: 0.2; transform: scale(1.1); }
+  50% { opacity: 0.45; transform: scale(0.9); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes score-fill {
+  0% { stroke-dashoffset: 251; }
+  100% { stroke-dashoffset: 16; }
+}
+
+.animate-float { animation: float 5s ease-in-out infinite; }
+.animate-float-delayed { animation: float-delayed 6s ease-in-out infinite 1.5s; }
+.animate-orb { animation: orb-pulse 5s ease-in-out infinite; }
+.animate-orb-2 { animation: orb-pulse-2 7s ease-in-out infinite 1s; }
+.animate-orb-3 { animation: orb-pulse 9s ease-in-out infinite 3s; }
+.shimmer-line {
+  background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.13) 50%, rgba(255,255,255,0.06) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s ease-in-out infinite;
+}
+.score-ring {
+  animation: score-fill 2s ease-out forwards 0.5s;
+  stroke-dasharray: 251;
+  stroke-dashoffset: 251;
+}
+
 /* Utility classes for premium UI */
 .glass {
   background: var(--bg-glass);

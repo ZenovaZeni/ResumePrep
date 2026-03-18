@@ -91,12 +91,14 @@ Rules:
     const brief = typeof parsed.brief === "string" ? parsed.brief : "";
     const modelAnswers = Array.isArray(parsed.modelAnswers) ? parsed.modelAnswers : [];
 
+    // Non-blocking: silently swallowed if interview_prep column doesn't exist yet.
     if (application_id) {
       await supabase
         .from("applications")
         .update({ interview_prep: { questions, brief, modelAnswers } })
         .eq("id", application_id)
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .then(() => null);
     }
 
     return NextResponse.json({ questions, brief, modelAnswers });
