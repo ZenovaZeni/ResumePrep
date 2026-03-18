@@ -28,11 +28,13 @@ export default async function NewResumePage() {
   };
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold text-white mb-6">Create resume</h1>
-      <p className="text-zinc-400 text-sm mb-6">
-        Choose a template. We’ll generate a first draft from your career profile; you can edit it before saving.
-      </p>
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)] mb-2">Create resume</h1>
+        <p className="text-sm text-[var(--text-secondary)]">
+          Choose a template. We&apos;ll generate a first draft from your career profile &mdash; you can edit everything before saving.
+        </p>
+      </div>
       <ResumeNewForm
         profile={profileForResume}
         templates={RESUME_TEMPLATES}

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { ResumeEditor } from "./ResumeEditor";
+import { SchemaErrorBanner } from "@/components/SchemaErrorBanner";
 import type { ResumeData } from "@/types/resume";
 
 export default async function ResumeEditPage({
@@ -13,10 +14,24 @@ export default async function ResumeEditPage({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: resume }, { data: profile }] = await Promise.all([
+  const [{ data: resume, error: resumeError }, { data: profile }] = await Promise.all([
     supabase.from("resumes").select("id, name, resume_data, slug").eq("id", id).eq("user_id", user.id).single(),
     supabase.from("profiles").select("tier").eq("user_id", user.id).single(),
   ]);
+
+  const isSchemaError =
+    resumeError?.message?.includes("schema cache") ||
+    resumeError?.message?.includes("does not exist") ||
+    resumeError?.message?.includes("relation");
+
+  if (isSchemaError) {
+    return (
+      <div>
+        <h1 className="text-2xl font-semibold text-[var(--text-primary)] mb-4">Resume</h1>
+        <SchemaErrorBanner error={resumeError?.message} table="resumes" />
+      </div>
+    );
+  }
 
   if (!resume) notFound();
 
@@ -25,11 +40,13 @@ export default async function ResumeEditPage({
   const isTestAccount = user.email === "test@example.com";
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] mb-1">{resume.name}</h1>
-      <p className="text-sm text-[var(--text-secondary)] mb-6">
-        Edit below. Use <strong>Improve</strong> on any bullet for AI polish, <strong>Suggest bullets</strong> to add new ones, and <strong>ATS check</strong> to see how it scores.
-      </p>
+    <div className="max-w-6xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] mb-1">{resume.name}</h1>
+        <p className="text-sm text-[var(--text-secondary)]">
+          Edit below. Use <strong>Improve</strong> on any bullet for AI polish, <strong>Suggest bullets</strong> to add new ones, and <strong>ATS check</strong> to see how it scores.
+        </p>
+      </div>
       <ResumeEditor
         resumeId={resume.id}
         initialData={resumeData}

@@ -35,16 +35,28 @@ export function ResumeEditor({ resumeId, initialData, initialSlug, tier = "free"
   const [suggestingExpIndex, setSuggestingExpIndex] = useState<number | null>(null);
   const [suggestedBullets, setSuggestedBullets] = useState<string[]>([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const save = useCallback(async () => {
     setSaving(true);
-    const res = await fetch(`/api/resumes/${resumeId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resume_data: data }),
-    });
-    setSaving(false);
-    if (res.ok) router.refresh();
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/resumes/${resumeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resume_data: data }),
+      });
+      if (res.ok) {
+        router.refresh();
+      } else {
+        const json = await res.json().catch(() => ({}));
+        setSaveError(json.error ?? "Could not save resume");
+      }
+    } catch {
+      setSaveError("Network error — changes not saved");
+    } finally {
+      setSaving(false);
+    }
   }, [resumeId, data, router]);
 
   const isFirstRender = useRef(true);
@@ -508,6 +520,9 @@ export function ResumeEditor({ resumeId, initialData, initialSlug, tier = "free"
           >
             Versions
           </Link>
+          {saveError && (
+            <span className="text-xs text-red-400 self-center">{saveError}</span>
+          )}
           <Link
             href="/dashboard/resumes"
             className="px-4 py-2 rounded-[var(--radius-md)] border border-[var(--border-default)] text-[var(--text-secondary)] text-sm hover:bg-[var(--bg-tertiary)]"

@@ -14,11 +14,19 @@ export default async function PublicResumePage({
   const supabase = await createClient();
   const { data: resume } = await supabase
     .from("resumes")
-    .select("id, name, resume_data")
+    .select("id, name, resume_data, user_id")
     .eq("slug", slug)
     .single();
 
   if (!resume) notFound();
+
+  // Check if the owner is a Pro user (determines branding display)
+  const { data: ownerProfile } = await supabase
+    .from("profiles")
+    .select("tier")
+    .eq("user_id", resume.user_id)
+    .single();
+  const isPro = ownerProfile?.tier === "pro";
 
   const data = (resume.resume_data ?? {}) as ResumeData;
   const design = getDefaultDesign(data.design);
@@ -29,7 +37,7 @@ export default async function PublicResumePage({
 
   return (
     <>
-      <PublicResumeToolbar slug={slug} />
+      <PublicResumeToolbar slug={slug} isPro={isPro} name={resume.name} />
       <main
         data-theme={theme}
         className={`min-h-screen bg-white text-black max-w-2xl mx-auto print:p-0 print:max-w-none resume-print ${paddingClass}`}

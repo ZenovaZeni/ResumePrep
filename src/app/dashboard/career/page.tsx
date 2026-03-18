@@ -25,24 +25,33 @@ export default async function CareerPage() {
   ]);
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] mb-2">
-        Career explorer
-      </h1>
-      <p className="text-sm text-[var(--text-secondary)] mb-6">
-        Use the chat to explore careers that fit you, or get quick suggestions by role. Save any career to copy, download, or dive deeper—and share or email the info easily.
-      </p>
-
-      <CareerExplorer />
-
-      <div className="mt-8 space-y-8">
-        <CareerRoadmap />
-        <CareerGapAnalysis applications={applications ?? []} />
+    <div className="max-w-6xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)] mb-1">
+          Career explorer
+        </h1>
+        <p className="text-sm text-[var(--text-secondary)]">
+          Explore career paths, get skill gap analysis, and build roadmaps. Ready to apply?{" "}
+          <a href="/dashboard/apply" className="text-[var(--accent)] font-medium hover:text-[var(--accent-hover)]">Generate an application kit →</a>
+        </p>
       </div>
 
-      {suggestions && suggestions.length > 0 && (
-        <CareerRecent suggestions={suggestions} />
-      )}
+      {/* Two-column on desktop */}
+      <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-8 items-start space-y-8 lg:space-y-0">
+        {/* Left: main tools */}
+        <div className="min-w-0 space-y-8">
+          <CareerExplorer />
+          <CareerGapAnalysis applications={applications ?? []} />
+        </div>
+
+        {/* Right: roadmap + recent (sticky) */}
+        <div className="space-y-6 lg:sticky lg:top-24">
+          <CareerRoadmap />
+          {suggestions && suggestions.length > 0 && (
+            <CareerRecent suggestions={suggestions} />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -53,13 +53,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: profile } = await supabase.from("profiles").select("first_name, last_name").eq("user_id", user.id).single();
-    const { data: career } = await supabase.from("career_profiles").select("*").eq("user_id", user.id).single();
+    const [{ data: profile }, { data: career }, resumeResult] = await Promise.all([
+      supabase.from("profiles").select("first_name, last_name").eq("user_id", user.id).single(),
+      supabase.from("career_profiles").select("*").eq("user_id", user.id).single(),
+      supabase
+        .from("resumes")
+        .select("resume_data")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(1),
+    ]);
     const { getDisplayName } = await import("@/lib/profile");
+    const latestResume = resumeResult.data?.[0]?.resume_data ?? null;
     const profileForAI = {
       name: getDisplayName(profile),
       email: user.email,
       ...career,
+      ...(latestResume ? { resume: latestResume } : {}),
     };
 
     const content = await generateCoverLetter(

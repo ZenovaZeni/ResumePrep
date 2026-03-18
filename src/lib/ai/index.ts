@@ -138,6 +138,59 @@ export interface ATSScoreResult {
   feedback: string[];
 }
 
+export interface MatchSummary {
+  matchScore: number;
+  topKeywords: string[];
+  matchedKeywords: string[];
+  missingKeywords: string[];
+  strengths: string[];
+  gaps: string[];
+  suggestedAngle: string;
+}
+
+export async function analyzeMatch(
+  profile: unknown,
+  jobDescription: string,
+  jobTitle: string,
+  companyName: string
+): Promise<MatchSummary> {
+  const system = `You are a job-fit analyst. Analyze how well a candidate matches a job description. Output only valid JSON. No markdown, no code fence.`;
+  const prompt = `Analyze this candidate's fit for: ${jobTitle} at ${companyName}.
+
+Job description:
+${jobDescription}
+
+Candidate profile:
+${JSON.stringify(profile)}
+
+Output this exact JSON:
+{
+  "matchScore": <0-100, honest overall fit score>,
+  "topKeywords": [<5-8 most important skills and terms the JD requires>],
+  "matchedKeywords": [<keywords from topKeywords the candidate demonstrably has>],
+  "missingKeywords": [<keywords from topKeywords the candidate lacks or does not mention>],
+  "strengths": [<2-3 specific reasons this candidate is a strong match, referencing their actual experience>],
+  "gaps": [<1-2 specific gaps or concerns, honest and concrete>],
+  "suggestedAngle": "<1-2 sentences: which part of their background to lead with for this application>"
+}`;
+  const raw = await getCompletion(prompt, { system, maxTokens: 1024 });
+  const cleaned = raw.replace(/^```\w*\n?|\n?```$/g, "").trim();
+  try {
+    const parsed = JSON.parse(cleaned) as Partial<MatchSummary>;
+    return {
+      matchScore: typeof parsed.matchScore === "number" ? Math.min(100, Math.max(0, parsed.matchScore)) : 70,
+      topKeywords: Array.isArray(parsed.topKeywords) ? parsed.topKeywords : [],
+      matchedKeywords: Array.isArray(parsed.matchedKeywords) ? parsed.matchedKeywords : [],
+      missingKeywords: Array.isArray(parsed.missingKeywords) ? parsed.missingKeywords : [],
+      strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
+      gaps: Array.isArray(parsed.gaps) ? parsed.gaps : [],
+      suggestedAngle: typeof parsed.suggestedAngle === "string" ? parsed.suggestedAngle : "",
+    };
+  } catch {
+    return { matchScore: 70, topKeywords: [], matchedKeywords: [], missingKeywords: [], strengths: [], gaps: [], suggestedAngle: "" };
+  }
+}
+
 export async function scoreResume(
   resumeText: string,
   jobDescription?: string
@@ -164,13 +217,20 @@ export async function tailorResume(
   profile: unknown,
   jobDescription: string
 ): Promise<string> {
-  const system = `You are a resume expert. Output only valid JSON for the tailored resume. Same structure as the input resume (contact, summary, experience with bullets, education, skills, etc.). Rewrite bullets to match the job description keywords and requirements. No markdown.`;
-  const prompt = `Tailor this resume to the job description. Preserve structure; rewrite experience bullets and summary to align with the role. Return the full resume as one JSON object.
+  const system = `You are a resume expert optimizing for ATS and hiring manager relevance. Output only valid JSON with the identical structure as the input resume. No markdown, no code fence.`;
+  const prompt = `Tailor this resume to the job description. Follow these rules exactly:
+1. Extract the 5-8 most critical keywords and skills from the job description
+2. Weave those exact terms into experience bullets where the candidate genuinely has that experience
+3. Rewrite the summary to open with direct fit for this specific role (reference the job title or core requirement from the JD)
+4. Reorder the skills array so JD-matched skills appear first
+5. Keep all company names, dates, job titles, and any metrics exactly as written — never invent or inflate numbers
+6. Only rewrite existing content — do not add experience the candidate does not have
+7. Return the full resume as one JSON object with identical structure to the input
 
 Resume:
 ${JSON.stringify(resumeData)}
 
-Profile (for context):
+Profile context (for reference):
 ${JSON.stringify(profile)}
 
 Job description:
@@ -186,17 +246,35 @@ export async function generateCoverLetter(
   jobTitle: string,
   highlight?: string
 ): Promise<string> {
-  const system = `You are a professional cover letter writer. Write a compelling, concise cover letter (3-4 short paragraphs). Use formal but warm tone. Do not use placeholders like [Your Name] - use the profile data. Output plain text only.`;
-  let prompt = `Write a cover letter for ${jobTitle} at ${companyName}.
+  const system = `You are a sharp, experienced cover letter writer. Your job is to produce letters that read like they were written by a confident, articulate human — not an AI.
 
-Job description:
+Absolute rules:
+- 3 paragraphs maximum. Each paragraph has one job: (1) hook — a specific value statement tied to this role, (2) evidence — 1-2 concrete accomplishments from the candidate's real experience that directly address the job's top requirements, (3) close — a specific reason this company is the right next step, not generic enthusiasm
+- Pull 3-5 of the most critical requirements from the job description and make sure the letter directly addresses them using the candidate's actual background
+- Embed 1-2 real examples from the candidate's profile: actual company names, project names, metrics, or outcomes they achieved — not vague claims
+- Match the company tone: startup/tech companies → direct and confident; large corporate/finance/enterprise → professional but not stiff; creative/agency → show some personality
+- Banned phrases (never use): "I am excited/passionate/thrilled", "I would be a valuable asset", "I bring a wealth of experience", "I am confident that", "I look forward to hearing from you", "Please find my resume attached", "I am writing to apply"
+- First sentence must hook immediately — lead with what you bring, not who you are
+- No filler sentences. Every sentence must carry weight
+- 220-300 words total
+- Output plain text only. No headers, no markdown, no salutation, no sign-off line`;
+
+  let prompt = `Write a cover letter for the ${jobTitle} role at ${companyName}.
+
+Step 1 — Identify the 3-5 most critical requirements from this job description:
 ${jobDescription}
 
-Candidate profile (use this for personalization):
-${JSON.stringify(profile)}`;
+Step 2 — Use this candidate's real background to address those requirements. Pull actual company names, roles, metrics, and accomplishments:
+${JSON.stringify(profile)}
+
+Step 3 — Infer company tone from the job description: Is this a startup? A large corporation? A creative agency? Match that energy in the writing.
+
+Write the letter now. 3 paragraphs, no fluff, no AI-sounding phrases.`;
+
   if (highlight?.trim()) {
-    prompt += `\n\nCandidate asked to highlight or emphasize: ${highlight.trim()}`;
+    prompt += `\n\nThe candidate specifically wants to highlight: ${highlight.trim()}. Weave this in naturally.`;
   }
+
   return getCompletion(prompt, { system, maxTokens: 1024 });
 }
 

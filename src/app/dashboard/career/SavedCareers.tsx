@@ -49,7 +49,7 @@ export function SavedCareers() {
   if (saved.length === 0) {
     return (
       <p className="text-sm text-[var(--text-tertiary)]">
-        No saved careers yet. Save any career from the chat or quick suggestions above.
+        No saved careers yet. Use the chat above to explore careers and save ones you like.
       </p>
     );
   }

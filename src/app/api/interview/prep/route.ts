@@ -54,16 +54,26 @@ export async function POST(request: Request) {
       ...career,
     };
 
-    const system = `You are an interview coach. Output only a single valid JSON object with keys: "questions" (array of 5-8 strings: mix of behavioral and role-specific questions), "brief" (short string: 2-4 sentences about the company/role and what to emphasize), "modelAnswers" (array of 1-2 sentence suggested answers for each question, aligned with the candidate profile). No markdown, no code fence.`;
-    const prompt = `Generate interview prep for this role: ${title} at ${company}.
+    const system = `You are a senior interview coach who prepares candidates for specific roles. Output only a single valid JSON object. No markdown, no code fence.`;
+    const prompt = `Generate targeted interview prep for: ${title} at ${company}.
 
-Job description:
+Job description (write questions that reference specific requirements, technologies, and responsibilities from this):
 ${description || "(not provided)"}
 
-Candidate profile (use for model answers):
+Candidate profile (use their real experience, companies, and skills for personalized model answers):
 ${JSON.stringify(profileForAI, null, 2)}
 
-Output JSON: { "questions": ["...", ...], "brief": "...", "modelAnswers": ["...", ...] }.`;
+Output this exact JSON structure:
+{
+  "questions": [<5-7 strings, each referencing a specific requirement or technology from the JD above>],
+  "brief": "<2-3 sentences: what specific aspects of THIS role and company to emphasize — not generic interview advice>",
+  "modelAnswers": [<one string per question, 2-3 sentences, drawing from the candidate's actual experience and companies>]
+}
+
+Rules:
+- questions: must mention specific tools, responsibilities, or challenges named in the JD; avoid generic "Tell me about yourself"
+- modelAnswers: reference the candidate's real companies, projects, skills, or metrics — no generic STAR templates
+- brief: name specific things about this particular role or company that the candidate should highlight`;
 
     const raw = await getCompletion(prompt, { system, maxTokens: 2048 });
     const cleaned = raw.replace(/^```\w*\n?|\n?```$/g, "").trim();
@@ -77,11 +87,19 @@ Output JSON: { "questions": ["...", ...], "brief": "...", "modelAnswers": ["..."
       );
     }
 
-    return NextResponse.json({
-      questions: Array.isArray(parsed.questions) ? parsed.questions : [],
-      brief: typeof parsed.brief === "string" ? parsed.brief : "",
-      modelAnswers: Array.isArray(parsed.modelAnswers) ? parsed.modelAnswers : [],
-    });
+    const questions = Array.isArray(parsed.questions) ? parsed.questions : [];
+    const brief = typeof parsed.brief === "string" ? parsed.brief : "";
+    const modelAnswers = Array.isArray(parsed.modelAnswers) ? parsed.modelAnswers : [];
+
+    if (application_id) {
+      await supabase
+        .from("applications")
+        .update({ interview_prep: { questions, brief, modelAnswers } })
+        .eq("id", application_id)
+        .eq("user_id", user.id);
+    }
+
+    return NextResponse.json({ questions, brief, modelAnswers });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Server error";
     return NextResponse.json({ error: message }, { status: 500 });

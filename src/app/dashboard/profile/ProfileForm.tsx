@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { AuthToast } from "@/components/AuthToast";
@@ -28,115 +28,121 @@ function parseJson<T>(v: unknown): T | undefined {
   return v as T;
 }
 
-// Truncate Supabase URL to last 8 chars for display (avoids exposing full URL)
-function projectHint(url: string | undefined): string {
-  if (!url) return "not set";
-  try {
-    const host = new URL(url).hostname;
-    const id = host.split(".")[0] ?? "";
-    return id.length > 8 ? `…${id.slice(-8)}` : id;
-  } catch {
-    return url.slice(-12);
-  }
+// ─── Completion score ─────────────────────────────────────────────────────────
+
+interface ScoreField {
+  label: string;
+  filled: boolean;
 }
 
-const FIX_SQL = `-- Paste this in Supabase Dashboard → SQL Editor → Run
-CREATE TABLE IF NOT EXISTS public.profiles (
-  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  first_name TEXT, last_name TEXT, avatar_url TEXT,
-  tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free','pro')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS public.career_profiles (
-  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  headline TEXT, summary TEXT, target_roles TEXT[], career_goals TEXT,
-  raw_experience JSONB, skills TEXT[], certifications JSONB,
-  education JSONB, projects JSONB, achievements JSONB, metrics JSONB,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.career_profiles ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "profiles_select" ON public.profiles;
-DROP POLICY IF EXISTS "profiles_insert" ON public.profiles;
-DROP POLICY IF EXISTS "profiles_update" ON public.profiles;
-DROP POLICY IF EXISTS "career_profiles_select" ON public.career_profiles;
-DROP POLICY IF EXISTS "career_profiles_insert" ON public.career_profiles;
-DROP POLICY IF EXISTS "career_profiles_update" ON public.career_profiles;
-CREATE POLICY "profiles_select" ON public.profiles FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "profiles_insert" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "profiles_update" ON public.profiles FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "career_profiles_select" ON public.career_profiles FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "career_profiles_insert" ON public.career_profiles FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "career_profiles_update" ON public.career_profiles FOR UPDATE USING (auth.uid() = user_id);
-GRANT USAGE ON SCHEMA public TO anon, authenticated;
-GRANT SELECT, INSERT, UPDATE ON public.profiles TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON public.career_profiles TO authenticated;
-NOTIFY pgrst, 'reload schema';`;
+function useCompletionScore(form: CareerProfileFormData): { score: number; fields: ScoreField[] } {
+  const fields: ScoreField[] = [
+    { label: "First name", filled: Boolean(form.contact?.firstName?.trim()) },
+    { label: "Email", filled: Boolean(form.contact?.email?.trim()) },
+    { label: "Headline", filled: Boolean(form.headline?.trim()) },
+    { label: "Summary", filled: Boolean(form.summary?.trim()) && (form.summary?.trim().length ?? 0) > 40 },
+    { label: "Target roles", filled: (form.target_roles?.length ?? 0) > 0 },
+    { label: "Work experience", filled: (form.experience?.length ?? 0) > 0 },
+    { label: "Education", filled: (form.education?.length ?? 0) > 0 },
+    { label: "Skills", filled: (form.skills?.length ?? 0) >= 3 },
+    { label: "Location", filled: Boolean(form.contact?.location?.trim()) },
+    { label: "LinkedIn or website", filled: Boolean(form.contact?.linkedin?.trim() ?? form.contact?.website?.trim()) },
+  ];
+  const filled = fields.filter((f) => f.filled).length;
+  const score = Math.round((filled / fields.length) * 100);
+  return { score, fields };
+}
 
-function DbErrorBanner({ loadError }: { loadError: string }) {
-  const [copied, setCopied] = useState(false);
-  const [showSql, setShowSql] = useState(false);
-
-  const supabaseUrl =
-    typeof window !== "undefined"
-      ? (document.querySelector("meta[name='supabase-url']") as HTMLMetaElement | null)?.content ?? undefined
-      : undefined;
-
-  function copy() {
-    void navigator.clipboard.writeText(FIX_SQL).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
+function CompletionBar({ score, fields }: { score: number; fields: ScoreField[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const color =
+    score >= 80 ? "bg-emerald-500" : score >= 50 ? "bg-amber-400" : "bg-[var(--accent)]";
+  const label =
+    score >= 80 ? "Great profile" : score >= 50 ? "Getting there" : "Just getting started";
+  const missing = fields.filter((f) => !f.filled);
 
   return (
-    <div className="rounded-[var(--radius-lg)] bg-red-500/10 border border-red-500/30 p-4 space-y-3">
-      <div className="flex items-start justify-between gap-4">
+    <div className="rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4 mb-6">
+      <div className="flex items-center justify-between mb-2">
         <div>
-          <p className="text-red-300 font-semibold">Database tables not found</p>
-          <p className="text-sm text-red-200/80 mt-0.5">{loadError}</p>
+          <span className="text-sm font-semibold text-[var(--text-primary)]">{label}</span>
+          <span className="ml-2 text-xs text-[var(--text-tertiary)]">{score}% complete</span>
         </div>
-        <span className="text-xs text-zinc-500 font-mono whitespace-nowrap">
-          project: <span className="text-zinc-400">{projectHint(process.env.NEXT_PUBLIC_SUPABASE_URL)}</span>
-        </span>
+        {missing.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+          >
+            {expanded ? "Hide tips" : `${missing.length} tip${missing.length > 1 ? "s" : ""}`}
+          </button>
+        )}
       </div>
-      <p className="text-sm text-zinc-300">
-        The <code className="font-mono text-xs bg-zinc-800 px-1 rounded">profiles</code> table needs to be created in your Supabase project.
-        Open <strong>Supabase Dashboard → SQL Editor</strong> and run the fix SQL below:
-      </p>
-      <div className="flex gap-2 flex-wrap">
-        <button
-          type="button"
-          onClick={copy}
-          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/20 text-red-200 hover:bg-red-500/30 transition-colors"
-        >
-          {copied ? "Copied!" : "Copy fix SQL"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowSql((s) => !s)}
-          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
-        >
-          {showSql ? "Hide SQL" : "Show SQL"}
-        </button>
-        <a
-          href="https://supabase.com/dashboard"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600/40 transition-colors"
-        >
-          Open Supabase Dashboard →
-        </a>
+      <div className="w-full h-1.5 rounded-full bg-[var(--bg-secondary)]">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${color}`}
+          style={{ width: `${score}%` }}
+        />
       </div>
-      {showSql && (
-        <pre className="text-xs text-zinc-300 bg-zinc-900/80 border border-zinc-700 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">
-          {FIX_SQL}
-        </pre>
+      {expanded && missing.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-2">
+          {missing.map((f) => (
+            <li
+              key={f.label}
+              className="text-xs px-2.5 py-1 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-secondary)]"
+            >
+              Add {f.label.toLowerCase()}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
 }
+
+// ─── Section wrapper ──────────────────────────────────────────────────────────
+
+function Section({
+  title,
+  hint,
+  action,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-5 sm:p-6 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-[var(--text-primary)]">{title}</h2>
+          {hint && <p className="text-xs text-[var(--text-tertiary)] mt-0.5">{hint}</p>}
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+// ─── Field helpers ────────────────────────────────────────────────────────────
+
+function inputCls(extra = "") {
+  return `w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50 focus:border-[var(--accent)] text-sm transition-colors ${extra}`;
+}
+
+function VoiceField({ children, onAppend }: { children: React.ReactNode; onAppend: (t: string) => void }) {
+  return (
+    <div className="flex items-start gap-2">
+      <div className="flex-1">{children}</div>
+      <VoiceButton onTranscript={(t) => onAppend(t)} className="mt-0.5 flex-shrink-0" />
+    </div>
+  );
+}
+
+// ─── AI state ────────────────────────────────────────────────────────────────
 
 type AiState = {
   headlineSuggestions: string[] | null;
@@ -147,6 +153,8 @@ type AiState = {
   bulletLoadingIdx: number | null;
 };
 
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export function ProfileForm({
   profile,
   careerProfile,
@@ -154,7 +162,9 @@ export function ProfileForm({
   loadError,
 }: ProfileFormProps) {
   const router = useRouter();
-  const supabase = createClient();
+  // Stable Supabase client — never recreated between renders
+  const supabase = useMemo(() => createClient(), []);
+
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [seedLoading, setSeedLoading] = useState(false);
@@ -174,6 +184,7 @@ export function ProfileForm({
 
   const dismissMessage = useCallback(() => setMessage(null), []);
 
+  // ─── Form state ─────────────────────────────────────────────────────────────
   const [form, setForm] = useState<CareerProfileFormData>({
     headline: "",
     summary: "",
@@ -198,12 +209,17 @@ export function ProfileForm({
     metrics: {},
   });
 
-  // Autofill first/last name + other contact fields from auth metadata if missing in DB.
+  // Autofill contact from auth metadata
+  const metaLoadedRef = useRef(false);
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (cancelled || !user) return;
+    if (metaLoadedRef.current) return;
+    metaLoadedRef.current = true;
+
+    void (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
       const m = user.user_metadata ?? {};
       const metaFirst = ((m.first_name ?? m.firstName ?? "") as string).trim();
       const metaLast = ((m.last_name ?? m.lastName ?? "") as string).trim();
@@ -214,8 +230,21 @@ export function ProfileForm({
       setForm((prev) => {
         const hasFirst = Boolean(prev.contact?.firstName?.trim());
         const hasLast = Boolean(prev.contact?.lastName?.trim());
-        const nextFirst = hasFirst ? prev.contact!.firstName! : (metaFirst || prev.contact?.firstName || "");
-        const nextLast = hasLast ? prev.contact!.lastName! : (metaLast || prev.contact?.lastName || "");
+        const nextFirst = hasFirst ? prev.contact!.firstName! : metaFirst || prev.contact?.firstName || "";
+        const nextLast = hasLast ? prev.contact!.lastName! : metaLast || prev.contact?.lastName || "";
+        const nextLinkedin = prev.contact?.linkedin?.trim() || metaLinkedin;
+        const nextWebsite = prev.contact?.website?.trim() || metaWebsite;
+        const nextLocation = prev.contact?.location?.trim() || metaLocation;
+        // Bail out if nothing actually changes
+        if (
+          nextFirst === prev.contact?.firstName &&
+          nextLast === prev.contact?.lastName &&
+          nextLinkedin === prev.contact?.linkedin &&
+          nextWebsite === prev.contact?.website &&
+          nextLocation === prev.contact?.location
+        ) {
+          return prev;
+        }
         return {
           ...prev,
           contact: {
@@ -223,16 +252,16 @@ export function ProfileForm({
             firstName: nextFirst,
             lastName: nextLast,
             name: [nextFirst, nextLast].filter(Boolean).join(" ").trim() || prev.contact?.name,
-            linkedin: prev.contact?.linkedin?.trim() || metaLinkedin || "",
-            website: prev.contact?.website?.trim() || metaWebsite || "",
-            location: prev.contact?.location?.trim() || metaLocation || "",
+            linkedin: nextLinkedin,
+            website: nextWebsite,
+            location: nextLocation,
           },
         };
       });
     })();
-    return () => { cancelled = true; };
   }, [supabase]);
 
+  // Hydrate form from DB data
   useEffect(() => {
     if (!careerProfile && !profile) return;
     const exp = parseJson<CareerProfileFormData["experience"]>(careerProfile?.raw_experience);
@@ -265,7 +294,10 @@ export function ProfileForm({
     }));
   }, [careerProfile, profile, userEmail]);
 
-  // ─── Submit ──────────────────────────────────────────────────────────────
+  // ─── Completion score ────────────────────────────────────────────────────────
+  const { score, fields: completionFields } = useCompletionScore(form);
+
+  // ─── Submit ──────────────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -277,57 +309,49 @@ export function ProfileForm({
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
-      setMessage({ type: "error", text: "Not signed in." });
+      setMessage({ type: "error", text: "Not signed in. Please refresh and try again." });
       setSaving(false);
       return;
     }
 
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .upsert(
-        {
-          user_id: user.id,
-          first_name: form.contact?.firstName?.trim() || null,
-          last_name: form.contact?.lastName?.trim() || null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" }
-      );
+    const { error: profileError } = await supabase.from("profiles").upsert(
+      {
+        user_id: user.id,
+        first_name: form.contact?.firstName?.trim() || null,
+        last_name: form.contact?.lastName?.trim() || null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    );
 
     if (profileError) {
-      const isSchemaErr = profileError.message.includes("schema cache") || profileError.message.includes("not found");
-      setMessage({
-        type: "error",
-        text: isSchemaErr
-          ? "Database tables missing. Run the fix SQL in your Supabase SQL Editor (see the red banner above)."
-          : profileError.message,
-      });
+      setMessage({ type: "error", text: profileError.message });
       setSaving(false);
       return;
     }
 
-    const { error: careerError } = await supabase
-      .from("career_profiles")
-      .upsert(
-        {
-          user_id: user.id,
-          headline: form.headline || null,
-          summary: form.summary || null,
-          target_roles: form.target_roles?.length ? form.target_roles : null,
-          career_goals: form.career_goals || null,
-          raw_experience: form.experience ?? null,
-          skills: form.skills?.length ? form.skills : null,
-          certifications: form.certifications ?? null,
-          education: form.education ?? null,
-          projects: form.projects ?? null,
-          achievements: form.achievements ?? null,
-          metrics: form.metrics ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" }
-      );
+    const { error: careerError } = await supabase.from("career_profiles").upsert(
+      {
+        user_id: user.id,
+        headline: form.headline || null,
+        summary: form.summary || null,
+        target_roles: form.target_roles?.length ? form.target_roles : null,
+        career_goals: form.career_goals || null,
+        raw_experience: form.experience ?? null,
+        skills: form.skills?.length ? form.skills : null,
+        certifications: form.certifications ?? null,
+        education: form.education ?? null,
+        projects: form.projects ?? null,
+        achievements: form.achievements ?? null,
+        metrics: form.metrics ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    );
 
     if (careerError) {
       setMessage({ type: "error", text: careerError.message });
@@ -340,7 +364,7 @@ export function ProfileForm({
     router.refresh();
   }
 
-  // ─── Experience helpers ───────────────────────────────────────────────────
+  // ─── Experience helpers ───────────────────────────────────────────────────────
   function addExperience() {
     setForm((prev) => ({
       ...prev,
@@ -360,7 +384,7 @@ export function ProfileForm({
     });
   }
 
-  // ─── Education helpers ───────────────────────────────────────────────────
+  // ─── Education helpers ────────────────────────────────────────────────────────
   function addEducation() {
     setForm((prev) => ({
       ...prev,
@@ -380,7 +404,27 @@ export function ProfileForm({
     });
   }
 
-  // ─── AI helpers ───────────────────────────────────────────────────────────
+  // ─── Project helpers ──────────────────────────────────────────────────────────
+  function addProject() {
+    setForm((prev) => ({
+      ...prev,
+      projects: [...(prev.projects ?? []), { name: "", description: "", url: "", bullets: [] }],
+    }));
+  }
+  function removeProject(i: number) {
+    setForm((prev) => ({ ...prev, projects: prev.projects?.filter((_, idx) => idx !== i) ?? [] }));
+  }
+  function updateProject(i: number, field: string, value: string | string[]) {
+    setForm((prev) => {
+      const list = [...(prev.projects ?? [])];
+      const entry = list[i];
+      if (!entry) return prev;
+      (entry as unknown as Record<string, unknown>)[field] = value;
+      return { ...prev, projects: list };
+    });
+  }
+
+  // ─── AI helpers ───────────────────────────────────────────────────────────────
   async function suggestHeadlines() {
     setAi((a) => ({ ...a, headlineLoading: true, headlineSuggestions: null }));
     try {
@@ -430,7 +474,7 @@ export function ProfileForm({
   async function suggestBulletsForExp(i: number) {
     const exp = form.experience?.[i];
     if (!exp?.role) {
-      setMessage({ type: "error", text: "Enter a role first before suggesting bullets." });
+      setMessage({ type: "error", text: "Enter a role first." });
       return;
     }
     setAi((a) => ({ ...a, bulletLoadingIdx: i }));
@@ -453,22 +497,22 @@ export function ProfileForm({
     }
   }
 
-  // ─── Import helpers ───────────────────────────────────────────────────────
+  // ─── Import helpers ────────────────────────────────────────────────────────────
   async function handleLoadSample() {
     if (!isTestAccount) return;
     setSeedLoading(true);
     setMessage(null);
     try {
       const res = await fetch("/api/profile/seed", { method: "POST" });
-      const data = await res.json().catch(() => ({})) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         setMessage({ type: "error", text: data?.error ?? res.statusText ?? "Failed to load sample data." });
         return;
       }
-      setMessage({ type: "ok", text: "Sample data loaded. Refreshing…" });
+      setMessage({ type: "ok", text: "Sample data loaded." });
       router.refresh();
     } catch (e) {
-      setMessage({ type: "error", text: `Load sample data failed: ${e instanceof Error ? e.message : "error"}` });
+      setMessage({ type: "error", text: `Failed: ${e instanceof Error ? e.message : "error"}` });
     } finally {
       setSeedLoading(false);
     }
@@ -484,7 +528,7 @@ export function ProfileForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paste: importPaste.trim() }),
       });
-      const data = await res.json() as {
+      const data = (await res.json()) as {
         error?: string;
         profile?: { first_name?: string | null; last_name?: string | null };
         career?: {
@@ -515,16 +559,24 @@ export function ProfileForm({
           ...prev.contact,
           firstName: impProfile?.first_name ?? prev.contact?.firstName ?? "",
           lastName: impProfile?.last_name ?? prev.contact?.lastName ?? "",
-          name: [impProfile?.first_name, impProfile?.last_name].filter(Boolean).join(" ").trim() || prev.contact?.name,
+          name:
+            [impProfile?.first_name, impProfile?.last_name].filter(Boolean).join(" ").trim() ||
+            prev.contact?.name,
         },
-        experience: Array.isArray(impCareer?.raw_experience) ? impCareer.raw_experience : prev.experience,
+        experience: Array.isArray(impCareer?.raw_experience)
+          ? impCareer.raw_experience
+          : prev.experience,
         education: Array.isArray(impCareer?.education) ? impCareer.education : prev.education,
         skills: impCareer?.skills ?? prev.skills,
-        certifications: Array.isArray(impCareer?.certifications) ? impCareer.certifications : prev.certifications,
+        certifications: Array.isArray(impCareer?.certifications)
+          ? impCareer.certifications
+          : prev.certifications,
         projects: Array.isArray(impCareer?.projects) ? impCareer.projects : prev.projects,
-        achievements: Array.isArray(impCareer?.achievements) ? impCareer.achievements : prev.achievements,
+        achievements: Array.isArray(impCareer?.achievements)
+          ? impCareer.achievements
+          : prev.achievements,
       }));
-      setMessage({ type: "ok", text: "Profile imported. Review and edit below, then Save." });
+      setMessage({ type: "ok", text: "Profile imported. Review below and save when ready." });
       setImportPaste("");
     } catch {
       setMessage({ type: "error", text: "Import failed." });
@@ -533,33 +585,24 @@ export function ProfileForm({
     }
   }
 
-  // ─── Input/textarea field with optional voice button ──────────────────────
-  function inputCls(extra = "") {
-    return `w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${extra}`;
-  }
-
-  function VoiceField({
-    children,
-    onAppend,
-  }: {
-    children: React.ReactNode;
-    onAppend: (t: string) => void;
-  }) {
-    return (
-      <div className="flex items-start gap-2">
-        <div className="flex-1">{children}</div>
-        <VoiceButton
-          onTranscript={(t) => onAppend(t)}
-          className="mt-1 flex-shrink-0"
-        />
-      </div>
-    );
-  }
-
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6 max-w-2xl">
-      {loadError && <DbErrorBanner loadError={loadError} />}
+    <div className="space-y-5 pb-24 sm:pb-8">
+      {/* Error banner — only for real DB errors, not "no row yet" */}
+      {loadError && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
+          <p className="text-sm font-semibold text-red-300 mb-1">Database error</p>
+          <p className="text-xs text-red-200/80">{loadError}</p>
+          <a
+            href="https://supabase.com/dashboard"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block mt-2 text-xs text-red-300 underline hover:text-red-200"
+          >
+            Open Supabase Dashboard →
+          </a>
+        </div>
+      )}
 
       {message && (
         <AuthToast
@@ -570,12 +613,14 @@ export function ProfileForm({
         />
       )}
 
-      {/* ── Import paste ── */}
-      <div className="rounded-[var(--radius-lg)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4">
-        <h2 className="text-[var(--text-primary)] font-medium mb-1">Import from LinkedIn or resume</h2>
-        <p className="text-sm text-[var(--text-secondary)] mb-3">
-          Paste raw text and AI will fill the form below. Review then Save. Max {MAX_IMPORT_LENGTH.toLocaleString()} chars.
-        </p>
+      {/* Completion score */}
+      <CompletionBar score={score} fields={completionFields} />
+
+      {/* ── Import paste ────────────────────────────────────────────────────── */}
+      <Section
+        title="Quick import"
+        hint="Paste your LinkedIn About + Experience text or an old resume — AI fills the form automatically."
+      >
         <textarea
           value={importPaste}
           onChange={(e) => setImportPaste(e.target.value.slice(0, MAX_IMPORT_LENGTH))}
@@ -584,12 +629,16 @@ export function ProfileForm({
             const text = (e.clipboardData?.getData("text/plain") ?? "").slice(0, MAX_IMPORT_LENGTH);
             setImportPaste((prev) => (prev + text).slice(0, MAX_IMPORT_LENGTH));
           }}
-          placeholder="Paste LinkedIn profile or resume text here…"
+          placeholder="Paste LinkedIn profile, resume, or any career text here…"
           rows={4}
-          className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
+          className={inputCls()}
         />
         {importPaste.length > 0 && (
-          <p className={`mb-2 text-xs font-medium ${importPaste.length >= MAX_IMPORT_LENGTH ? "text-amber-300" : "text-indigo-300"}`}>
+          <p
+            className={`text-xs font-medium ${
+              importPaste.length >= MAX_IMPORT_LENGTH ? "text-amber-300" : "text-[var(--text-tertiary)]"
+            }`}
+          >
             {importPaste.length.toLocaleString()} / {MAX_IMPORT_LENGTH.toLocaleString()} chars
           </p>
         )}
@@ -597,41 +646,43 @@ export function ProfileForm({
           type="button"
           onClick={handleImport}
           disabled={importLoading || !importPaste.trim()}
-          className={`px-4 py-2 rounded-[var(--radius-md)] text-white text-sm font-medium transition-all ${
+          className={`px-4 py-2 rounded-lg text-white text-sm font-medium transition-all ${
             importLoading || !importPaste.trim()
               ? "bg-zinc-600 opacity-50 cursor-not-allowed"
-              : "bg-indigo-600 hover:bg-indigo-500"
+              : "bg-[var(--accent)] hover:opacity-90"
           }`}
         >
           {importLoading ? "Importing…" : "Import with AI"}
         </button>
-      </div>
+      </Section>
 
-      {/* ── Test account sample ── */}
+      {/* Test account sample data */}
       {isTestAccount && (
-        <div className="rounded-[var(--radius-lg)] bg-amber-500/10 border border-amber-500/30 p-4">
-          <p className="text-[var(--text-primary)] font-medium mb-1">Test account</p>
-          <p className="text-sm text-[var(--text-secondary)] mb-3">
-            Load sample profile data so you can try resumes, ATS, tailor, and cover letters without typing.
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <p className="text-sm font-medium text-[var(--text-primary)] mb-1">Test account</p>
+          <p className="text-xs text-[var(--text-secondary)] mb-3">
+            Load sample data to try resumes, ATS scores, and cover letters.
           </p>
           <button
             type="button"
             onClick={handleLoadSample}
             disabled={seedLoading}
-            className="px-4 py-2 rounded-[var(--radius-md)] bg-amber-500/20 text-amber-200 text-sm font-medium hover:bg-amber-500/30 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-amber-500/20 text-amber-200 text-sm font-medium hover:bg-amber-500/30 disabled:opacity-50"
           >
             {seedLoading ? "Loading…" : "Load sample data"}
           </button>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* ── Contact ── */}
-        <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-6 space-y-4">
-          <h2 className="text-lg font-medium text-white">Contact</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* ── Contact ──────────────────────────────────────────────────────── */}
+        <Section
+          title="Contact"
+          hint="Appears at the top of every generated resume."
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-sm text-zinc-400 mb-1">
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
                 First name <span className="text-red-400">*</span>
               </label>
               <input
@@ -652,7 +703,7 @@ export function ProfileForm({
               />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-1">Last name</label>
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Last name</label>
               <input
                 type="text"
                 value={form.contact?.lastName ?? ""}
@@ -670,104 +721,124 @@ export function ProfileForm({
               />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-1">Email</label>
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Email</label>
               <input
                 type="email"
                 value={form.contact?.email ?? ""}
-                onChange={(e) => setForm((p) => ({ ...p, contact: { ...p.contact, email: e.target.value } }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, contact: { ...p.contact, email: e.target.value } }))
+                }
                 className={inputCls()}
               />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-1">Phone</label>
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Phone</label>
               <input
                 type="text"
                 value={form.contact?.phone ?? ""}
-                onChange={(e) => setForm((p) => ({ ...p, contact: { ...p.contact, phone: e.target.value } }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, contact: { ...p.contact, phone: e.target.value } }))
+                }
+                placeholder="+1 (555) 000-0000"
                 className={inputCls()}
               />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-1">Location</label>
-              <VoiceField onAppend={(t) => setForm((p) => ({ ...p, contact: { ...p.contact, location: ((p.contact?.location ?? "") + " " + t).trim() } }))}>
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Location</label>
+              <VoiceField
+                onAppend={(t) =>
+                  setForm((p) => ({
+                    ...p,
+                    contact: { ...p.contact, location: ((p.contact?.location ?? "") + " " + t).trim() },
+                  }))
+                }
+              >
                 <input
                   type="text"
                   value={form.contact?.location ?? ""}
-                  onChange={(e) => setForm((p) => ({ ...p, contact: { ...p.contact, location: e.target.value } }))}
-                  placeholder="e.g. New York, NY"
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, contact: { ...p.contact, location: e.target.value } }))
+                  }
+                  placeholder="New York, NY"
                   className={inputCls()}
                 />
               </VoiceField>
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-1">LinkedIn</label>
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">LinkedIn</label>
               <input
                 type="url"
                 value={form.contact?.linkedin ?? ""}
-                onChange={(e) => setForm((p) => ({ ...p, contact: { ...p.contact, linkedin: e.target.value } }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, contact: { ...p.contact, linkedin: e.target.value } }))
+                }
                 placeholder="https://linkedin.com/in/you"
                 className={inputCls()}
               />
             </div>
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">Website</label>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
+                Website / Portfolio
+              </label>
               <input
                 type="url"
                 value={form.contact?.website ?? ""}
-                onChange={(e) => setForm((p) => ({ ...p, contact: { ...p.contact, website: e.target.value } }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, contact: { ...p.contact, website: e.target.value } }))
+                }
                 placeholder="https://yoursite.com"
                 className={inputCls()}
               />
             </div>
           </div>
-        </section>
+        </Section>
 
-        {/* ── Summary ── */}
-        <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-6 space-y-4">
-          <h2 className="text-lg font-medium text-white">Summary</h2>
-
+        {/* ── Professional identity ─────────────────────────────────────────── */}
+        <Section
+          title="Professional identity"
+          hint="AI uses your headline, summary, and goals to write a strong opening for each application."
+        >
           {/* Headline */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-sm text-zinc-400">Headline</label>
+              <label className="text-xs font-medium text-[var(--text-secondary)]">Headline</label>
               <button
                 type="button"
                 onClick={suggestHeadlines}
                 disabled={ai.headlineLoading}
-                className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors"
+                className="text-xs text-[var(--accent)] hover:opacity-80 disabled:opacity-40 transition"
               >
-                {ai.headlineLoading ? "Thinking…" : "✦ Suggest headlines"}
+                {ai.headlineLoading ? "Thinking…" : "✦ AI suggestions"}
               </button>
             </div>
             <VoiceField
-              onAppend={(t) => setForm((p) => ({ ...p, headline: ((p.headline ?? "") + " " + t).trim() }))}
+              onAppend={(t) =>
+                setForm((p) => ({ ...p, headline: ((p.headline ?? "") + " " + t).trim() }))
+              }
             >
               <input
                 type="text"
                 value={form.headline ?? ""}
                 onChange={(e) => setForm((p) => ({ ...p, headline: e.target.value }))}
-                placeholder="e.g. Senior Software Engineer | Full-Stack & Cloud"
+                placeholder="Senior Software Engineer | Full-Stack & Cloud"
                 className={inputCls()}
               />
             </VoiceField>
             {ai.headlineSuggestions && ai.headlineSuggestions.length > 0 && (
-              <div className="mt-2 space-y-1">
-                <p className="text-xs text-zinc-500">Click to apply:</p>
-                <div className="flex flex-wrap gap-2">
-                  {ai.headlineSuggestions.map((h, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => {
-                        setForm((p) => ({ ...p, headline: h }));
-                        setAi((a) => ({ ...a, headlineSuggestions: null }));
-                      }}
-                      className="px-3 py-1.5 text-xs rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/25 transition-colors text-left"
-                    >
-                      {h}
-                    </button>
-                  ))}
-                </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {ai.headlineSuggestions.map((h, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      setForm((p) => ({ ...p, headline: h }));
+                      setAi((a) => ({ ...a, headlineSuggestions: null }));
+                    }}
+                    className="px-3 py-1.5 text-xs rounded-full bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30 hover:bg-[var(--accent)]/25 transition-colors text-left"
+                  >
+                    {h}
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -775,12 +846,14 @@ export function ProfileForm({
           {/* Professional summary */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-sm text-zinc-400">Professional summary</label>
+              <label className="text-xs font-medium text-[var(--text-secondary)]">
+                Professional summary
+              </label>
               <button
                 type="button"
                 onClick={draftSummary}
                 disabled={ai.summaryLoading}
-                className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors"
+                className="text-xs text-[var(--accent)] hover:opacity-80 disabled:opacity-40 transition"
               >
                 {ai.summaryLoading ? "Drafting…" : "✦ Draft with AI"}
               </button>
@@ -794,28 +867,29 @@ export function ProfileForm({
                 rows={4}
                 value={form.summary ?? ""}
                 onChange={(e) => setForm((p) => ({ ...p, summary: e.target.value }))}
+                placeholder="2–4 sentences. What you do, how long you've done it, your biggest strength."
                 className={inputCls()}
               />
             </VoiceField>
             {ai.summaryDraft && (
-              <div className="mt-2 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
-                <p className="text-xs text-indigo-300 mb-1">AI draft — click Apply to use:</p>
-                <p className="text-sm text-zinc-200">{ai.summaryDraft}</p>
-                <div className="flex gap-2 mt-2">
+              <div className="mt-2 p-3 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/25">
+                <p className="text-xs text-[var(--accent)] mb-1.5">AI draft — click Apply to use:</p>
+                <p className="text-sm text-[var(--text-primary)] leading-relaxed">{ai.summaryDraft}</p>
+                <div className="flex gap-2 mt-2.5">
                   <button
                     type="button"
                     onClick={() => {
                       setForm((p) => ({ ...p, summary: ai.summaryDraft ?? p.summary }));
                       setAi((a) => ({ ...a, summaryDraft: null }));
                     }}
-                    className="px-3 py-1 text-xs rounded-lg bg-indigo-600 text-white hover:bg-indigo-500"
+                    className="px-3 py-1 text-xs rounded-lg bg-[var(--accent)] text-white hover:opacity-90"
                   >
                     Apply
                   </button>
                   <button
                     type="button"
                     onClick={() => setAi((a) => ({ ...a, summaryDraft: null }))}
-                    className="px-3 py-1 text-xs rounded-lg bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+                    className="px-3 py-1 text-xs rounded-lg bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
                   >
                     Dismiss
                   </button>
@@ -826,98 +900,137 @@ export function ProfileForm({
 
           {/* Target roles */}
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">Target roles (comma-separated)</label>
+            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
+              Target roles
+            </label>
             <input
               type="text"
               value={form.target_roles?.join(", ") ?? ""}
               onChange={(e) =>
                 setForm((p) => ({
                   ...p,
-                  target_roles: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                  target_roles: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
                 }))
               }
-              placeholder="Software Engineer, Backend Developer"
+              placeholder="Software Engineer, Backend Developer, Tech Lead"
               className={inputCls()}
             />
+            <p className="text-xs text-[var(--text-tertiary)] mt-1">Comma-separated. Helps AI match keywords.</p>
           </div>
 
           {/* Career goals */}
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">Career goals</label>
+            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Career goals</label>
             <VoiceField
               onAppend={(t) =>
-                setForm((p) => ({ ...p, career_goals: [p.career_goals, t].filter(Boolean).join(" ").trim() }))
+                setForm((p) => ({
+                  ...p,
+                  career_goals: [p.career_goals, t].filter(Boolean).join(" ").trim(),
+                }))
               }
             >
               <textarea
                 rows={2}
                 value={form.career_goals ?? ""}
                 onChange={(e) => setForm((p) => ({ ...p, career_goals: e.target.value }))}
-                placeholder="e.g. Move into a tech lead role within 2 years"
+                placeholder="e.g. Move into a tech lead role, focus on distributed systems"
                 className={inputCls()}
               />
             </VoiceField>
           </div>
-        </section>
+        </Section>
 
-        {/* ── Work experience ── */}
-        <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium text-white">Work experience</h2>
-            <button type="button" onClick={addExperience} className="text-sm text-indigo-400 hover:underline">
-              + Add
+        {/* ── Work experience ───────────────────────────────────────────────── */}
+        <Section
+          title="Work experience"
+          hint="The most important section. Add bullet points — AI rewrites them to match each job description."
+          action={
+            <button
+              type="button"
+              onClick={addExperience}
+              className="text-xs font-medium text-[var(--accent)] hover:opacity-80 transition shrink-0"
+            >
+              + Add role
             </button>
-          </div>
+          }
+        >
+          {(form.experience ?? []).length === 0 && (
+            <p className="text-sm text-[var(--text-tertiary)] text-center py-4">
+              No roles added yet.{" "}
+              <button
+                type="button"
+                onClick={addExperience}
+                className="text-[var(--accent)] underline hover:opacity-80"
+              >
+                Add your first
+              </button>
+              {" "}or use Quick import above.
+            </p>
+          )}
           {(form.experience ?? []).map((exp, i) => (
-            <div key={i} className="p-4 rounded-lg bg-zinc-800 border border-zinc-700 space-y-3">
+            <div
+              key={i}
+              className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] space-y-3"
+            >
               <div className="flex justify-between items-center">
-                <span className="text-zinc-400 text-sm font-medium">Experience #{i + 1}</span>
-                <button type="button" onClick={() => removeExperience(i)} className="text-red-400 text-xs hover:underline">
+                <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+                  Role {i + 1}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeExperience(i)}
+                  className="text-xs text-red-400 hover:text-red-300 transition"
+                >
                   Remove
                 </button>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2.5 sm:grid-cols-2">
                 <input
                   type="text"
                   placeholder="Company"
                   value={exp.company}
                   onChange={(e) => updateExperience(i, "company", e.target.value)}
-                  className="px-3 py-2 rounded bg-zinc-700 border border-zinc-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className={inputCls()}
                 />
                 <input
                   type="text"
-                  placeholder="Role / Title"
+                  placeholder="Job title / Role"
                   value={exp.role}
                   onChange={(e) => updateExperience(i, "role", e.target.value)}
-                  className="px-3 py-2 rounded bg-zinc-700 border border-zinc-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className={inputCls()}
                 />
                 <input
                   type="text"
                   placeholder="Start (e.g. Jan 2020)"
                   value={exp.start}
                   onChange={(e) => updateExperience(i, "start", e.target.value)}
-                  className="px-3 py-2 rounded bg-zinc-700 border border-zinc-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className={inputCls()}
                 />
                 <input
                   type="text"
                   placeholder="End (e.g. Present)"
                   value={exp.end}
                   onChange={(e) => updateExperience(i, "end", e.target.value)}
-                  className="px-3 py-2 rounded bg-zinc-700 border border-zinc-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className={inputCls()}
                 />
               </div>
 
-              {/* Bullets */}
+              {/* Bullet points */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-zinc-400 text-sm">Bullet points (one per line)</label>
+                  <label className="text-xs font-medium text-[var(--text-secondary)]">
+                    What you did (one bullet per line)
+                  </label>
                   <button
                     type="button"
                     onClick={() => suggestBulletsForExp(i)}
                     disabled={ai.bulletLoadingIdx === i}
-                    className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors"
+                    className="text-xs text-[var(--accent)] hover:opacity-80 disabled:opacity-40 transition"
                   >
-                    {ai.bulletLoadingIdx === i ? "Suggesting…" : "✦ Suggest bullets"}
+                    {ai.bulletLoadingIdx === i ? "Suggesting…" : "✦ AI bullets"}
                   </button>
                 </div>
                 <VoiceField
@@ -931,15 +1044,22 @@ export function ProfileForm({
                     rows={3}
                     value={exp.bullets?.join("\n") ?? ""}
                     onChange={(e) =>
-                      updateExperience(i, "bullets", e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))
+                      updateExperience(
+                        i,
+                        "bullets",
+                        e.target.value
+                          .split("\n")
+                          .map((s) => s.trim())
+                          .filter(Boolean)
+                      )
                     }
-                    placeholder="Led migration of legacy monolith to microservices…"
-                    className="w-full px-3 py-2 rounded bg-zinc-700 border border-zinc-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    placeholder="Led migration to microservices, reducing deploy time by 60%…"
+                    className={inputCls()}
                   />
                 </VoiceField>
                 {ai.bulletSuggestions[i] && ai.bulletSuggestions[i].length > 0 && (
-                  <div className="mt-2 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/30 space-y-1">
-                    <p className="text-xs text-indigo-300 mb-1">Suggested bullets — click to add:</p>
+                  <div className="mt-2 p-3 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/25 space-y-1">
+                    <p className="text-xs text-[var(--accent)] mb-1">Suggested — click to add:</p>
                     {ai.bulletSuggestions[i].map((b, bi) => (
                       <button
                         key={bi}
@@ -952,15 +1072,17 @@ export function ProfileForm({
                             return { ...a, bulletSuggestions: updated };
                           });
                         }}
-                        className="block w-full text-left px-2 py-1.5 text-xs text-zinc-200 bg-zinc-700/60 hover:bg-zinc-700 rounded-lg transition-colors"
+                        className="block w-full text-left px-2.5 py-1.5 text-xs text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
                       >
                         + {b}
                       </button>
                     ))}
                     <button
                       type="button"
-                      onClick={() => setAi((a) => ({ ...a, bulletSuggestions: { ...a.bulletSuggestions, [i]: [] } }))}
-                      className="text-xs text-zinc-500 hover:text-zinc-400 mt-1"
+                      onClick={() =>
+                        setAi((a) => ({ ...a, bulletSuggestions: { ...a.bulletSuggestions, [i]: [] } }))
+                      }
+                      className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] mt-1"
                     >
                       Dismiss
                     </button>
@@ -969,59 +1091,84 @@ export function ProfileForm({
               </div>
             </div>
           ))}
-        </section>
+        </Section>
 
-        {/* ── Education ── */}
-        <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium text-white">Education</h2>
-            <button type="button" onClick={addEducation} className="text-sm text-indigo-400 hover:underline">
+        {/* ── Education ─────────────────────────────────────────────────────── */}
+        <Section
+          title="Education"
+          hint="Degree, school, and graduation year. AI includes this on every resume."
+          action={
+            <button
+              type="button"
+              onClick={addEducation}
+              className="text-xs font-medium text-[var(--accent)] hover:opacity-80 transition shrink-0"
+            >
               + Add
             </button>
-          </div>
+          }
+        >
+          {(form.education ?? []).length === 0 && (
+            <p className="text-sm text-[var(--text-tertiary)] text-center py-2">
+              No education added yet.
+            </p>
+          )}
           {(form.education ?? []).map((edu, i) => (
-            <div key={i} className="p-4 rounded-lg bg-zinc-800 border border-zinc-700 flex gap-3 flex-wrap items-start">
+            <div
+              key={i}
+              className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] grid gap-2 sm:grid-cols-2"
+            >
               <input
                 type="text"
-                placeholder="School"
+                placeholder="School or University"
                 value={edu.school}
                 onChange={(e) => updateEducation(i, "school", e.target.value)}
-                className="flex-1 min-w-[120px] px-3 py-2 rounded bg-zinc-700 border border-zinc-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className={inputCls()}
               />
               <input
                 type="text"
-                placeholder="Degree"
+                placeholder="Degree, e.g. B.S. Computer Science"
                 value={edu.degree}
                 onChange={(e) => updateEducation(i, "degree", e.target.value)}
-                className="flex-1 min-w-[120px] px-3 py-2 rounded bg-zinc-700 border border-zinc-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className={inputCls()}
               />
               <input
                 type="text"
-                placeholder="Start"
+                placeholder="Start year"
                 value={edu.start}
                 onChange={(e) => updateEducation(i, "start", e.target.value)}
-                className="w-24 px-3 py-2 rounded bg-zinc-700 border border-zinc-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className={inputCls()}
               />
-              <input
-                type="text"
-                placeholder="End"
-                value={edu.end}
-                onChange={(e) => updateEducation(i, "end", e.target.value)}
-                className="w-24 px-3 py-2 rounded bg-zinc-700 border border-zinc-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-              <button type="button" onClick={() => removeEducation(i)} className="text-red-400 text-sm hover:underline self-center">
-                Remove
-              </button>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="End year"
+                  value={edu.end}
+                  onChange={(e) => updateEducation(i, "end", e.target.value)}
+                  className={inputCls("flex-1")}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeEducation(i)}
+                  className="text-xs text-red-400 hover:text-red-300 px-2 transition"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           ))}
-        </section>
+        </Section>
 
-        {/* ── Skills ── */}
-        <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-6 space-y-4">
-          <h2 className="text-lg font-medium text-white">Skills</h2>
+        {/* ── Skills ────────────────────────────────────────────────────────── */}
+        <Section
+          title="Skills"
+          hint="AI matches your skills to job requirements and highlights the relevant ones."
+        >
           <VoiceField
             onAppend={(t) => {
-              const extra = t.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+              const extra = t
+                .split(/[,\n]/)
+                .map((s) => s.trim())
+                .filter(Boolean);
               setForm((p) => ({ ...p, skills: [...(p.skills ?? []), ...extra] }));
             }}
           >
@@ -1029,21 +1176,124 @@ export function ProfileForm({
               type="text"
               value={form.skills?.join(", ") ?? ""}
               onChange={(e) =>
-                setForm((p) => ({ ...p, skills: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) }))
+                setForm((p) => ({
+                  ...p,
+                  skills: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                }))
               }
-              placeholder="JavaScript, React, Node.js, Python"
+              placeholder="JavaScript, React, Node.js, Python, AWS, Docker…"
               className={inputCls()}
             />
           </VoiceField>
-        </section>
+          <p className="text-xs text-[var(--text-tertiary)]">Comma-separated. More is better — AI selects the most relevant ones per job.</p>
+          {(form.skills?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {(form.skills ?? []).map((s, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/20"
+                >
+                  {s}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((p) => ({ ...p, skills: p.skills?.filter((_, idx) => idx !== i) }))
+                    }
+                    className="opacity-60 hover:opacity-100 transition ml-0.5"
+                    aria-label={`Remove ${s}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </Section>
 
-        {/* ── Achievements ── */}
-        <section className="rounded-xl bg-zinc-900 border border-zinc-800 p-6 space-y-4">
-          <h2 className="text-lg font-medium text-white">Achievements</h2>
+        {/* ── Projects ─────────────────────────────────────────────────────── */}
+        <Section
+          title="Projects"
+          hint="Personal or open-source projects. AI adds the most relevant ones to your resume."
+          action={
+            <button
+              type="button"
+              onClick={addProject}
+              className="text-xs font-medium text-[var(--accent)] hover:opacity-80 transition shrink-0"
+            >
+              + Add project
+            </button>
+          }
+        >
+          {(form.projects ?? []).length === 0 && (
+            <p className="text-sm text-[var(--text-tertiary)] text-center py-2">
+              No projects added yet.
+            </p>
+          )}
+          {(form.projects ?? []).map((proj, i) => (
+            <div
+              key={i}
+              className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] space-y-2.5"
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+                  Project {i + 1}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeProject(i)}
+                  className="text-xs text-red-400 hover:text-red-300 transition"
+                >
+                  Remove
+                </button>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <input
+                  type="text"
+                  placeholder="Project name"
+                  value={proj.name}
+                  onChange={(e) => updateProject(i, "name", e.target.value)}
+                  className={inputCls()}
+                />
+                <input
+                  type="url"
+                  placeholder="URL (GitHub, live site…)"
+                  value={proj.url ?? ""}
+                  onChange={(e) => updateProject(i, "url", e.target.value)}
+                  className={inputCls()}
+                />
+              </div>
+              <VoiceField
+                onAppend={(t) =>
+                  updateProject(i, "description", ((proj.description ?? "") + " " + t).trim())
+                }
+              >
+                <textarea
+                  rows={2}
+                  placeholder="What does it do? Tech stack, scale, impact."
+                  value={proj.description ?? ""}
+                  onChange={(e) => updateProject(i, "description", e.target.value)}
+                  className={inputCls()}
+                />
+              </VoiceField>
+            </div>
+          ))}
+        </Section>
+
+        {/* ── Achievements ──────────────────────────────────────────────────── */}
+        <Section
+          title="Achievements & awards"
+          hint="Quantified wins and recognition. AI uses these to strengthen your resume bullets."
+        >
           <VoiceField
             onAppend={(t) => {
               const next = [form.achievements?.join("\n"), t].filter(Boolean).join("\n");
-              setForm((p) => ({ ...p, achievements: next.split("\n").map((s) => s.trim()).filter(Boolean) }));
+              setForm((p) => ({
+                ...p,
+                achievements: next.split("\n").map((s) => s.trim()).filter(Boolean),
+              }));
             }}
           >
             <textarea
@@ -1052,24 +1302,35 @@ export function ProfileForm({
               onChange={(e) =>
                 setForm((p) => ({
                   ...p,
-                  achievements: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean),
+                  achievements: e.target.value
+                    .split("\n")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
                 }))
               }
-              placeholder="One per line — e.g. Won internal hackathon 2023"
+              placeholder={`One per line, e.g.\nIncreased revenue 40% through new checkout flow\nWon internal hackathon 2023\nPromoted to senior in 18 months`}
               className={inputCls()}
             />
           </VoiceField>
-        </section>
+        </Section>
 
-        <div className="flex items-center gap-4">
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-6 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 disabled:opacity-50 transition-colors"
-          >
-            {saving ? "Saving…" : "Save profile"}
-          </button>
-          {saving && <p className="text-sm text-zinc-400">Saving to Supabase…</p>}
+        {/* ── Save button — fixed on mobile ────────────────────────────────── */}
+        <div
+          className="fixed left-0 right-0 lg:static lg:bottom-auto lg:left-auto lg:right-auto z-30 p-4 sm:p-0 bg-[var(--bg-primary)]/80 backdrop-blur-sm lg:bg-transparent lg:backdrop-blur-none border-t border-[var(--border-subtle)] lg:border-0"
+          style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
+        >
+          <div className="max-w-2xl mx-auto flex items-center gap-4">
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 sm:flex-none px-8 py-3 rounded-xl bg-[var(--accent)] text-white font-semibold hover:opacity-90 active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg shadow-[var(--accent)]/20"
+            >
+              {saving ? "Saving…" : "Save profile"}
+            </button>
+            {saving && (
+              <p className="text-sm text-[var(--text-secondary)]">Saving to Supabase…</p>
+            )}
+          </div>
         </div>
       </form>
     </div>

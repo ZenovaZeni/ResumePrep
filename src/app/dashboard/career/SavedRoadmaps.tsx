@@ -187,7 +187,7 @@ export function SavedRoadmaps({ refreshKey }: { refreshKey: number }) {
   }
 
   if (loading) return <p className="text-sm text-[var(--text-tertiary)]">Loading saved roadmaps…</p>;
-  if (roadmaps.length === 0) return <p className="text-sm text-[var(--text-tertiary)]">No saved roadmaps yet. Generate and save one above.</p>;
+  if (roadmaps.length === 0) return <p className="text-sm text-[var(--text-tertiary)]">No saved roadmaps yet. Generate a roadmap above and save it to access it later.</p>;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">

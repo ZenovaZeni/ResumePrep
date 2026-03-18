@@ -30,11 +30,14 @@ export function MarketingNav() {
           <a href="#features" className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
             Features
           </a>
+          <a href="#pricing" className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+            Pricing
+          </a>
           <Link href="/login" className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
             Log in
           </Link>
           <Link href="/signup" className="btn-primary py-2 px-4 text-sm">
-            Get started
+            Get started free
           </Link>
         </nav>
 
@@ -119,6 +122,13 @@ export function MarketingNav() {
               className="px-5 py-3.5 text-base font-medium text-[var(--text-primary)] hover:bg-[var(--bg-glass)] transition-colors"
             >
               Features
+            </a>
+            <a
+              href="#pricing"
+              onClick={() => setOpen(false)}
+              className="px-5 py-3.5 text-base font-medium text-[var(--text-primary)] hover:bg-[var(--bg-glass)] transition-colors"
+            >
+              Pricing
             </a>
           </nav>
           <div className="mt-auto px-5 pb-6 flex flex-col gap-3 border-t border-[var(--border-subtle)] pt-4">

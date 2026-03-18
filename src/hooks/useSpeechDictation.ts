@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 
 export type DictationStatus = "idle" | "listening" | "processing" | "error";
 
@@ -39,6 +39,9 @@ export function useSpeechDictation({
 }: UseSpeechDictationOptions): UseSpeechDictationReturn {
   const [status, setStatus] = useState<DictationStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Start as false on both server and client to avoid hydration mismatch.
+  // useEffect updates it after the first client render.
+  const [isSupported, setIsSupported] = useState(false);
 
   // Web Speech refs
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -48,9 +51,9 @@ export function useSpeechDictation({
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const isSupported = useWhisper
-    ? isMediaRecorderSupported()
-    : isSpeechRecognitionSupported();
+  useEffect(() => {
+    setIsSupported(useWhisper ? isMediaRecorderSupported() : isSpeechRecognitionSupported());
+  }, [useWhisper]);
 
   const stopRecognition = useCallback(() => {
     recognitionRef.current?.stop();

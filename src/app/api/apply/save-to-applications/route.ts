@@ -13,12 +13,16 @@ export async function POST(request: Request) {
     company_name,
     job_title,
     job_description,
+    match_summary,
+    interview_prep,
   } = body as {
     variant_id: string;
     document_id: string;
     company_name: string;
     job_title: string;
     job_description?: string | null;
+    match_summary?: unknown;
+    interview_prep?: unknown;
   };
   if (!variant_id || !document_id || !company_name?.trim() || !job_title?.trim()) {
     return NextResponse.json(
@@ -36,6 +40,8 @@ export async function POST(request: Request) {
       job_description: job_description?.trim() ?? null,
       status: "saved",
       source: "quick_apply",
+      match_summary: match_summary ?? null,
+      interview_prep: interview_prep ?? null,
     })
     .select("id")
     .single();
